@@ -1,0 +1,16 @@
+- git:
+    uri: https://github.com/Naoki-Hiraoka/rtmbuild2
+    local-name: rtmbuild2
+- git:
+    uri: https://github.com/choreonoid/choreonoid
+    local-name: choreonoid
+    version: release-1.7
+- git:
+    uri: https://github.com/Naoki-Hiraoka/cpp_filters
+    local-name: cpp_filters
+- git:
+    uri: https://github.com/Naoki-Hiraoka/ik_solvers
+    local-name: ik_solvers
+- git:
+    uri: https://github.com/Naoki-Hiraoka/joint_limit_table
+    local-name: joint_limit_table

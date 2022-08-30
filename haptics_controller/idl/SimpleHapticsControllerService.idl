@@ -14,7 +14,7 @@ module OpenHRP
       MODE_IDLE,
       MODE_HC,
       MODE_SYNC_TO_IDLE,
-      MODE_SYNC_TO_HC,
+      MODE_SYNC_TO_HC
     };
 
     struct SimpleHapticsControllerParam
