@@ -22,7 +22,6 @@
 #include <cpp_filters/TwoPointInterpolator.h>
 
 #include "SimpleHapticsControllerService_impl.h"
-#include "hrpsys/idl/RobotHardwareService.hh"
 #include "GaitParam.h"
 #include "RefToGenFrameConverter.h"
 #include "RefForceHandler.h"

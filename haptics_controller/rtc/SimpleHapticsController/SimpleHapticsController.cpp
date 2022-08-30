@@ -4,8 +4,6 @@
 #include <cnoid/RateGyroSensor>
 #include <cnoid/ValueTree>
 #include <cnoid/EigenUtil>
-#include "MathUtil.h"
-#include "CnoidBodyUtil.h"
 #include <limits>
 
 static const char* SimpleHapticsController_spec[] = {
