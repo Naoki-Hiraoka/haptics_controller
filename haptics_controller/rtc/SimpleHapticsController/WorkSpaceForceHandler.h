@@ -6,13 +6,13 @@
 class WorkSpaceForceHandler {
 public:
   // WorkSpaceForceHandlerだけでつかうパラメータ
-  double floor_height = 0.7; // generate frame. [m]
+  double floorHeight = 0.7; // generate frame. [m]. isHcRunning()中は変更されない
   double floorPGain = 10000.0; // 0以上
   double floorDGain = 500.0; // 0以上
 
-  std::vector<std::vector<cnoid::Vector3> > legShape; // 要素数と順序はeeNameと同じ. endeffector frame. 単位[m]
+  std::vector<std::vector<cnoid::Vector3> > legShape; // 要素数と順序はeeNameと同じ. endeffector frame. 単位[m]. isHcRunning()中は変更されない
 protected:
-
+  mutable cpp_filters::TwoPointInterpolator<double> currentFloorHeight = cpp_filters::TwoPointInterpolator<double>(0.0,0.0,0.0, cpp_filters::HOFFARBIB)
 public:
   void init(const GaitParam& gaitParam){
     for(int i=0;i<gaitParam.eeName.size();i++){
@@ -20,10 +20,15 @@ public:
     }
   }
 
+  // startAutoBalancer時に一回呼ばれる
+  double reset(const GaitParam& gaitParam){
+    // currentFloorHeight.reset(0.0);
+    // currentFloorHeight.setGoal(floorHeight, 5.0);
+  }
 
   // refEEWrenchからrfhTgtEEWrenchを計算する
-  bool convertFrame(const GaitParam& gaitParam, double dt,// input
-                    std::vector<cnoid::Vector6>& o_rfhTgtEEWrench /*endeffector frame. endeffector origin*/) const; // output
+  bool calcWrench(const GaitParam& gaitParam, double dt,// input
+                  std::vector<cnoid::Vector6>& o_wsfhTgtEEWrench /*endeffector frame. endeffector origin*/) const; // output
 };
 
 #endif

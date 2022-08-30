@@ -25,15 +25,11 @@
 #include "hrpsys/idl/RobotHardwareService.hh"
 #include "GaitParam.h"
 #include "RefToGenFrameConverter.h"
-#include "ActToGenFrameConverter.h"
-#include "LegManualController.h"
-#include "FootStepGenerator.h"
-#include "LegCoordsGenerator.h"
-#include "ImpedanceController.h"
-#include "Stabilizer.h"
-#include "ExternalForceHandler.h"
-#include "FullbodyIKSolver.h"
-#include "CmdVelGenerator.h"
+#include "RefForceHandler.h"
+#include "WorkSpaceForceHandler.h"
+#include "GravityCompensationHandler.h"
+#include "JointAngleLimitHandler.h"
+#include "TorqueOutputGenerator.h"
 
 class SimpleHapticsController : public RTC::DataFlowComponentBase{
 public:
@@ -88,8 +84,6 @@ protected:
     RTC::OutPort<RTC::TimedOrientation3D> m_genBaseRpyOut_; // for log
     std::vector<RTC::TimedPose3D> m_actEEPose_; // Generate World frame. 要素数及び順番はgaitParam_.eeNameと同じ
     std::vector<std::unique_ptr<RTC::OutPort<RTC::TimedPose3D> > > m_actEEPoseOut_;
-    std::vector<RTC::TimedDoubleSeq> m_tgtEEWrench_; // Generate World frame. EndEffector origin. 要素数及び順番はgaitParam_.eeNameと同じ
-    std::vector<std::unique_ptr<RTC::OutPort<RTC::TimedDoubleSeq> > > m_tgtEEWrenchOut_;
   };
   Ports ports_;
 
@@ -162,7 +156,6 @@ protected:
   GaitParam gaitParam_;
 
   RefToGenFrameConverter refToGenFrameConverter_;
-  ActToGenFrameConverter actToGenFrameConverter_;
   RefForceHandler refForceHandler_;
   WorkSpaceForceHandler workSpaceForceHandler_;
   GravityCompensationHandler gravityCompensationHandler_;
@@ -173,8 +166,8 @@ protected:
   // utility functions
   bool getProperty(const std::string& key, std::string& ret);
 
-  static bool readInPortData(const double& dt, SimpleHapticsController::Ports& ports, cnoid::BodyPtr actRobotRaw, std::vector<cnoid::Vector6>& refEEWrenchRaw, std::vector<cpp_filters::TwoPointInterpolatorSE3>& refEEPoseRaw);
-  static bool execSimpleHapticsController(const SimpleHapticsController::ControlMode& mode, GaitParam& gaitParam, double dt, const RefToGenFrameConverter& refToGenFrameConverter, const ActToGenFrameConverter& actToGenFrameConverter, const RefForceHandler& refForceHandler, const WorkSpaceForceHandler& workSpaceForceHandler, const GravityCompensationHandler& gravityCompensationHandler, const JointAngleLimitHandler& jointAngleLimitHandler, const TorqueOutputGenerator& torqueOutputGenerator);
+  static bool readInPortData(SimpleHapticsController::Ports& ports, cnoid::BodyPtr refRobotRaw, cnoid::BodyPtr actRobot, std::vector<cnoid::Vector6>& refEEWrenchRaw, std::vector<cnoid::Position>& refEEPoseRaw, std::vector<cnoid::Position>& actEEPose);
+  static bool execSimpleHapticsController(const SimpleHapticsController::ControlMode& mode, GaitParam& gaitParam, double dt, const RefToGenFrameConverter& refToGenFrameConverter, const RefForceHandler& refForceHandler, const WorkSpaceForceHandler& workSpaceForceHandler, const GravityCompensationHandler& gravityCompensationHandler, const JointAngleLimitHandler& jointAngleLimitHandler, const TorqueOutputGenerator& torqueOutputGenerator);
   static bool writeOutPortData(SimpleHapticsController::Ports& ports, const SimpleHapticsController::ControlMode& mode, cpp_filters::TwoPointInterpolator<double>& idleToAbcTransitionInterpolator, double dt, const GaitParam& gaitParam);
 };
 

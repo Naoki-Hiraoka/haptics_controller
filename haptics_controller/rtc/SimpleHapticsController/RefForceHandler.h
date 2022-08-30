@@ -36,8 +36,8 @@ public:
   }
 
   // refEEWrenchからrfhTgtEEWrenchを計算する
-  bool convertFrame(const GaitParam& gaitParam, double dt,// input
-                    std::vector<cnoid::Vector6>& o_rfhTgtEEWrench /*endeffector frame. endeffector origin*/) const; // output
+  bool calcWrench(const GaitParam& gaitParam, double dt,// input
+                  std::vector<cnoid::Vector6>& o_rfhTgtEEWrench /*endeffector frame. endeffector origin*/) const; // output
 };
 
 #endif
