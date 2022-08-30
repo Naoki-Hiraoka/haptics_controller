@@ -41,8 +41,8 @@ public:
 
   bool startHapticsController();
   bool stopHapticsController();
-  bool setSimpleHapticsControllerParam(const OpenHRP::SimpleHapticsControllerService::SimpleHapticsControllerParam& i_param);
-  bool getSimpleHapticsControllerParam(OpenHRP::SimpleHapticsControllerService::SimpleHapticsControllerParam& i_param);
+  bool setHapticsControllerParam(const OpenHRP::SimpleHapticsControllerService::SimpleHapticsControllerParam& i_param);
+  bool getHapticsControllerParam(OpenHRP::SimpleHapticsControllerService::SimpleHapticsControllerParam& i_param);
 
 protected:
   std::mutex mutex_;
@@ -165,7 +165,7 @@ protected:
   // utility functions
   bool getProperty(const std::string& key, std::string& ret);
 
-  static bool readInPortData(SimpleHapticsController::Ports& ports, cnoid::BodyPtr refRobotRaw, cnoid::BodyPtr actRobot, std::vector<cnoid::Vector6>& refEEWrenchRaw, std::vector<cnoid::Position>& refEEPoseRaw, std::vector<cnoid::Position>& actEEPose);
+  static bool readInPortData(const GaitParam& gaitParam, SimpleHapticsController::Ports& ports, cnoid::BodyPtr refRobotRaw, cnoid::BodyPtr actRobot, std::vector<cnoid::Vector6>& refEEWrenchRaw, std::vector<cnoid::Position>& refEEPoseRaw, std::vector<cnoid::Position>& actEEPose);
   static bool execSimpleHapticsController(const SimpleHapticsController::ControlMode& mode, GaitParam& gaitParam, double dt, const RefToGenFrameConverter& refToGenFrameConverter, const RefForceHandler& refForceHandler, const WorkSpaceForceHandler& workSpaceForceHandler, const GravityCompensationHandler& gravityCompensationHandler, const JointAngleLimitHandler& jointAngleLimitHandler, const TorqueOutputGenerator& torqueOutputGenerator);
   static bool writeOutPortData(SimpleHapticsController::Ports& ports, const SimpleHapticsController::ControlMode& mode, cpp_filters::TwoPointInterpolator<double>& idleToAbcTransitionInterpolator, double dt, const GaitParam& gaitParam);
 };

@@ -169,15 +169,6 @@ RTC::ReturnCode_t SimpleHapticsController::onInitialize(){
       this->ports_.m_actEEPoseOut_[i] = std::make_unique<RTC::OutPort<RTC::TimedPose3D> >(name.c_str(), this->ports_.m_actEEPose_[i]);
       this->addOutPort(name.c_str(), *(this->ports_.m_actEEPoseOut_[i]));
     }
-
-    // 各EndEffectorにつき、tgt<name>WrenchOutというOutPortをつくる
-    this->ports_.m_tgtEEWrenchOut_.resize(this->gaitParam_.eeName.size());
-    this->ports_.m_tgtEEWrench_.resize(this->gaitParam_.eeName.size());
-    for(int i=0;i<this->gaitParam_.eeName.size();i++){
-      std::string name = "tgt"+this->gaitParam_.eeName[i]+"WrenchOut";
-      this->ports_.m_tgtEEWrenchOut_[i] = std::make_unique<RTC::OutPort<RTC::TimedDoubleSeq> >(name.c_str(), this->ports_.m_tgtEEWrench_[i]);
-      this->addOutPort(name.c_str(), *(this->ports_.m_tgtEEWrenchOut_[i]));
-    }
   }
 
   this->refForceHandler_.init(this->gaitParam_, this->dt_);
@@ -191,7 +182,7 @@ RTC::ReturnCode_t SimpleHapticsController::onInitialize(){
 }
 
 // static function
-bool SimpleHapticsController::readInPortData(SimpleHapticsController::Ports& ports, cnoid::BodyPtr refRobotRaw, cnoid::BodyPtr actRobot, std::vector<cnoid::Vector6>& refEEWrenchRaw, std::vector<cnoid::Position>& refEEPoseRaw, std::vector<cnoid::Position>& actEEPose){
+bool SimpleHapticsController::readInPortData(const GaitParam& gaitParam, SimpleHapticsController::Ports& ports, cnoid::BodyPtr refRobotRaw, cnoid::BodyPtr actRobot, std::vector<cnoid::Vector6>& refEEWrenchRaw, std::vector<cnoid::Position>& refEEPoseRaw, std::vector<cnoid::Position>& actEEPose){
   bool qAct_updated = false;
 
   if(ports.m_refTauIn_.isNew()){
@@ -208,7 +199,7 @@ bool SimpleHapticsController::readInPortData(SimpleHapticsController::Ports& por
       ports.m_refEEWrenchIn_[i]->read();
       if(ports.m_refEEWrench_[i].data.length() == 6){
         for(int j=0;j<6;j++){
-          if(std::isfinite(ports.m_refEEWrench_[i].data[j])) refEEWrenchOrigin[i][j] = ports.m_refEEWrench_[i].data[j];
+          if(std::isfinite(ports.m_refEEWrench_[i].data[j])) refEEWrenchRaw[i][j] = ports.m_refEEWrench_[i].data[j];
         }
       }
     }
@@ -267,13 +258,13 @@ bool SimpleHapticsController::execSimpleHapticsController(const SimpleHapticsCon
                              gaitParam.rfhTgtEEWrench);
 
   workSpaceForceHandler.calcWrench(gaitParam, dt,
-                                   gaitParam.wsfhTgtWrench);
+                                   gaitParam.wsfhTgtEEWrench);
 
   gravityCompensationHandler.calcTorque(gaitParam, dt,
                                         gaitParam.actRobotGch, gaitParam.gchTorque);
 
   jointAngleLimitHandler.calcTorque(gaitParam, dt,
-                                    gaitParam.japhTorque);
+                                    gaitParam.jalhTorque);
 
   torqueOutputGenerator.calcTorque(gaitParam,
                                    gaitParam.actRobotTqc);
@@ -282,19 +273,19 @@ bool SimpleHapticsController::execSimpleHapticsController(const SimpleHapticsCon
 }
 
 // static function
-bool SimpleHapticsController::writeOutPortData(SimpleHapticsController::Ports& ports, const SimpleHapticsController::ControlMode& mode, cpp_filters::TwoPointInterpolator<double>& idleToAbcTransitionInterpolator, double dt, const GaitParam& gaitParam){
-  if(mode.isSyncToABC()){
-    if(mode.isSyncToABCInit()){
-      idleToAbcTransitionInterpolator.reset(0.0);
+bool SimpleHapticsController::writeOutPortData(SimpleHapticsController::Ports& ports, const SimpleHapticsController::ControlMode& mode, cpp_filters::TwoPointInterpolator<double>& idleToHcTransitionInterpolator, double dt, const GaitParam& gaitParam){
+  if(mode.isSyncToHC()){
+    if(mode.isSyncToHCInit()){
+      idleToHcTransitionInterpolator.reset(0.0);
     }
-    idleToAbcTransitionInterpolator.setGoal(1.0,mode.remainTime());
-    idleToAbcTransitionInterpolator.interpolate(dt);
+    idleToHcTransitionInterpolator.setGoal(1.0,mode.remainTime());
+    idleToHcTransitionInterpolator.interpolate(dt);
   }else if(mode.isSyncToIdle()){
     if(mode.isSyncToIdleInit()){
-      idleToAbcTransitionInterpolator.reset(1.0);
+      idleToHcTransitionInterpolator.reset(1.0);
     }
-    idleToAbcTransitionInterpolator.setGoal(0.0,mode.remainTime());
-    idleToAbcTransitionInterpolator.interpolate(dt);
+    idleToHcTransitionInterpolator.setGoal(0.0,mode.remainTime());
+    idleToHcTransitionInterpolator.interpolate(dt);
   }
 
   {
@@ -304,8 +295,8 @@ bool SimpleHapticsController::writeOutPortData(SimpleHapticsController::Ports& p
     for(int i=0;i<gaitParam.actRobotTqc->numJoints();i++){
       if(mode.now() == SimpleHapticsController::ControlMode::MODE_IDLE || !gaitParam.jointControllable[i]){
         ports.m_genTau_.data[i] = gaitParam.refRobotRaw->joint(i)->u();
-      }else if(mode.isSyncToABC() || mode.isSyncToIdle()){
-        double ratio = idleToAbcTransitionInterpolator.value();
+      }else if(mode.isSyncToHC() || mode.isSyncToIdle()){
+        double ratio = idleToHcTransitionInterpolator.value();
         ports.m_genTau_.data[i] = gaitParam.refRobotRaw->joint(i)->u() * (1.0 - ratio) + gaitParam.actRobotTqc->joint(i)->u() * ratio;
       }else{
         ports.m_genTau_.data[i] = gaitParam.actRobotTqc->joint(i)->u();
@@ -330,7 +321,7 @@ bool SimpleHapticsController::writeOutPortData(SimpleHapticsController::Ports& p
     ports.m_genBasePose_.data.orientation.y = baseRpy[2];
     ports.m_genBasePoseOut_.write();
 
-    ports.m_genBaseTform_.tm = ports.m_qRef_.tm;
+    ports.m_genBaseTform_.tm = ports.m_qAct_.tm;
     ports.m_genBaseTform_.data.length(12);
     for(int i=0;i<3;i++){
       ports.m_genBaseTform_.data[i] = basePos[i];
@@ -375,21 +366,21 @@ RTC::ReturnCode_t SimpleHapticsController::onExecute(RTC::UniqueId ec_id){
   std::string instance_name = std::string(this->m_profile.instance_name);
   this->loop_++;
 
-  if(!SimpleHapticsController::readInPortData(this->dt_, this->ports_, this->gaitParam_.refRobotRaw, this->gaitParam_.actRobotRaw, this->gaitParam_.refEEWrenchOrigin, this->gaitParam_.refEEPoseRaw, this->gaitParam_.actEEPose)) return RTC::RTC_OK;  // qAct が届かなければ何もしない
+  if(!SimpleHapticsController::readInPortData(this->gaitParam_, this->ports_, this->gaitParam_.refRobotRaw, this->gaitParam_.actRobot, this->gaitParam_.refEEWrenchRaw, this->gaitParam_.refEEPoseRaw, this->gaitParam_.actEEPose)) return RTC::RTC_OK;  // qAct が届かなければ何もしない
 
   this->mode_.update(this->dt_);
   this->gaitParam_.update(this->dt_);
 
-  if(this->mode_.isABCRunning()) {
-    if(this->mode_.isSyncToABCInit()){ // startAutoBalancer直後の初回. 内部パラメータのリセット
+  if(this->mode_.isHCRunning()) {
+    if(this->mode_.isSyncToHCInit()){ // startAutoBalancer直後の初回. 内部パラメータのリセット
       this->gaitParam_.reset();
       this->refForceHandler_.reset();
-      this->workSpaceForceHandler_.reset();
+      this->workSpaceForceHandler_.reset(this->gaitParam_);
     }
     SimpleHapticsController::execSimpleHapticsController(this->mode_, this->gaitParam_, this->dt_, this->refToGenFrameConverter_, this->refForceHandler_, this->workSpaceForceHandler_, this->gravityCompensationHandler_, this->jointAngleLimitHandler_, this->torqueOutputGenerator_);
   }
 
-  SimpleHapticsController::writeOutPortData(this->ports_, this->mode_, this->idleToAbcTransitionInterpolator_, this->dt_, this->gaitParam_);
+  SimpleHapticsController::writeOutPortData(this->ports_, this->mode_, this->idleToHcTransitionInterpolator_, this->dt_, this->gaitParam_);
 
   return RTC::RTC_OK;
 }
@@ -398,7 +389,7 @@ RTC::ReturnCode_t SimpleHapticsController::onActivated(RTC::UniqueId ec_id){
   std::lock_guard<std::mutex> guard(this->mutex_);
   std::cerr << "[" << m_profile.instance_name << "] "<< "onActivated(" << ec_id << ")" << std::endl;
   this->mode_.reset();
-  this->idleToAbcTransitionInterpolator_.reset(0.0);
+  this->idleToHcTransitionInterpolator_.reset(0.0);
   return RTC::RTC_OK;
 }
 RTC::ReturnCode_t SimpleHapticsController::onDeactivated(RTC::UniqueId ec_id){
@@ -419,7 +410,7 @@ bool SimpleHapticsController::startHapticsController(){
     return false;
   }
 }
-bool SimpleHapticsController::stopAutoBalancer(){
+bool SimpleHapticsController::stopHapticsController(){
   if(this->mode_.setNextTransition(ControlMode::STOP_HC)){
     std::cerr << "[" << m_profile.instance_name << "] stop HapticsController mode" << std::endl;
     while (this->mode_.now() != ControlMode::MODE_IDLE) usleep(1000);
@@ -430,14 +421,14 @@ bool SimpleHapticsController::stopAutoBalancer(){
     return false;
   }
 }
-bool SimpleHapticsController::setSimpleHapticsControllerParam(const OpenHRP::SimpleHapticsControllerService::SimpleHapticsControllerParam& i_param){
+bool SimpleHapticsController::setHapticsControllerParam(const OpenHRP::SimpleHapticsControllerService::SimpleHapticsControllerParam& i_param){
   std::lock_guard<std::mutex> guard(this->mutex_);
 
   // ignore i_param.ee_name
   if(this->mode_.now() == ControlMode::MODE_IDLE){
     for(int i=0;i<this->gaitParam_.jointControllable.size();i++) this->gaitParam_.jointControllable[i] = false;
     for(int i=0;i<i_param.controllable_joints.length();i++){
-      cnoid::LinkPtr joint = this->gaitParam_.genRobot->link(std::string(i_param.controllable_joints[i]));
+      cnoid::LinkPtr joint = this->gaitParam_.actRobot->link(std::string(i_param.controllable_joints[i]));
       if(joint) this->gaitParam_.jointControllable[joint->jointId()] = true;
     }
   }
@@ -446,13 +437,13 @@ bool SimpleHapticsController::setSimpleHapticsControllerParam(const OpenHRP::Sim
 
   return true;
 }
-bool SimpleHapticsController::getSimpleHapticsControllerParam(OpenHRP::SimpleHapticsControllerService::SimpleHapticsControllerParam& i_param) {
+bool SimpleHapticsController::getHapticsControllerParam(OpenHRP::SimpleHapticsControllerService::SimpleHapticsControllerParam& i_param) {
   std::lock_guard<std::mutex> guard(this->mutex_);
 
   i_param.ee_name.length(this->gaitParam_.eeName.size());
   for(int i=0;i<this->gaitParam_.eeName.size();i++) i_param.ee_name[i] = this->gaitParam_.eeName[i].c_str();
   std::vector<std::string> controllable_joints;
-  for(int i=0;i<this->gaitParam_.jointControllable.size();i++) if(this->gaitParam_.jointControllable[i]) controllable_joints.push_back(this->gaitParam_.genRobot->joint(i)->name());
+  for(int i=0;i<this->gaitParam_.jointControllable.size();i++) if(this->gaitParam_.jointControllable[i]) controllable_joints.push_back(this->gaitParam_.actRobot->joint(i)->name());
   i_param.controllable_joints.length(controllable_joints.size());
   for(int i=0;i<controllable_joints.size();i++) i_param.controllable_joints[i] = controllable_joints[i].c_str();
   i_param.hc_start_transition_time = this->mode_.hc_start_transition_time;

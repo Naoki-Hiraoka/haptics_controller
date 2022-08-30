@@ -6,9 +6,7 @@
 #include <vector>
 #include <limits>
 #include <cpp_filters/TwoPointInterpolator.h>
-#include <cpp_filters/FirstOrderLowPassFilter.h>
 #include <joint_limit_table/JointLimitTable.h>
-#include "FootGuidedController.h"
 
 enum leg_enum{RLEG=0, LLEG=1, NUM_LEGS=2};
 
@@ -19,7 +17,7 @@ public:
   std::vector<std::string> eeParentLink; // constant. 要素数と順序はeeNameと同じ. 必ずrobot->link(parentLink)がnullptrではないことを約束する. そのため、毎回robot->link(parentLink)がnullptrかをチェックしなくても良い
   std::vector<cnoid::Position> eeLocalT; // constant. 要素数と順序はeeNameと同じ. Parent Link Frame
 
-  std::vector<double> maxTorque; // constant. 要素数と順序はnumJoints()と同じ. 単位は[Nm]. 0以上
+  cnoid::VectorX maxTorque; // constant. 要素数と順序はnumJoints()と同じ. 単位は[Nm]. 0以上
   std::vector<std::vector<std::shared_ptr<joint_limit_table::JointLimitTable> > > jointLimitTables; // constant. 要素数と順序はnumJoints()と同じ. for actRobot.
 
   const double g = 9.80665; // 重力加速度
@@ -32,7 +30,7 @@ public:
 public:
   // from reference port
   cnoid::BodyPtr refRobotRaw; // actual. Model File frame (= generate frame)
-  std::vector<cnoid::Vector6> refEEPoseRaw; // 要素数と順序はeeNameと同じ.Reference frame.
+  std::vector<cnoid::Position> refEEPoseRaw; // 要素数と順序はeeNameと同じ.Reference frame.
   std::vector<cnoid::Vector6> refEEWrenchRaw; // 要素数と順序はeeNameと同じ.Reference frame. EndEffector origin. ロボットが受ける力
   cnoid::BodyPtr actRobot; // actual. Model File frame (= generate frame)
   std::vector<cnoid::Position> actEEPose; // 要素数と順序はeeNameと同じ.generate frame
@@ -61,7 +59,7 @@ public:
 
 public:
   void init(const cnoid::BodyPtr& robot){
-    maxTorque.resize(robot->numJoints(), std::numeric_limits<double>::max());
+    maxTorque = cnoid::VectorX::Ones(robot->numJoints()) * std::numeric_limits<double>::max();
     jointLimitTables.resize(robot->numJoints());
     jointControllable.resize(robot->numJoints(), true);
     refRobotRaw = robot->clone();

@@ -29,7 +29,7 @@ public:
 
   // startHapticsController時に1回呼ばれる
   void reset(){
-    for(int i=0;i<gaitParam.eeName.size();i++){
+    for(int i=0;i<wrenchLpfForHpf.size();i++){
       wrenchLpfForHpf[i].reset(cnoid::Vector6::Zero());
       wrenchLpf[i].reset(cnoid::Vector6::Zero());
     }

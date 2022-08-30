@@ -12,11 +12,11 @@ public:
 
   std::vector<std::vector<cnoid::Vector3> > legShape; // 要素数と順序はeeNameと同じ. endeffector frame. 単位[m]. isHcRunning()中は変更されない
 protected:
-  mutable cpp_filters::TwoPointInterpolator<double> currentFloorHeight = cpp_filters::TwoPointInterpolator<double>(0.0,0.0,0.0, cpp_filters::HOFFARBIB)
+  mutable cpp_filters::TwoPointInterpolator<double> currentFloorHeight = cpp_filters::TwoPointInterpolator<double>(0.0,0.0,0.0, cpp_filters::HOFFARBIB);
 public:
   void init(const GaitParam& gaitParam){
     for(int i=0;i<gaitParam.eeName.size();i++){
-      legShape.push_back(std::vector<cnoid::Vector3>{cnoid::Vector3(0.115,0.065,0.0),cnoid::Vector3(-0.105,0.065,0.0),cnoid::Vector3(-0.105,-0.065,0.0),cnoid::Vector3(0.115,-0.065,0.0)}):
+      legShape.push_back(std::vector<cnoid::Vector3>{cnoid::Vector3(0.115,0.065,0.0),cnoid::Vector3(-0.105,0.065,0.0),cnoid::Vector3(-0.105,-0.065,0.0),cnoid::Vector3(0.115,-0.065,0.0)});
     }
   }
 

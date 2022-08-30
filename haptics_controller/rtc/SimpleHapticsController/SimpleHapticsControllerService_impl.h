@@ -2,7 +2,7 @@
 #ifndef SimpleHapticsControllerSERVICESVC_IMPL_H
 #define SimpleHapticsControllerSERVICESVC_IMPL_H
 
-#include "auto_stabilizer/idl/SimpleHapticsControllerService.hh"
+#include "haptics_controller/idl/SimpleHapticsControllerService.hh"
 
 class SimpleHapticsController;
 
@@ -15,8 +15,8 @@ public:
   ~SimpleHapticsControllerService_impl();
   CORBA::Boolean startHapticsController();
   CORBA::Boolean stopHapticsController();
-  CORBA::Boolean setSimpleHapticsControllerParam(const OpenHRP::SimpleHapticsControllerService::SimpleHapticsControllerParam& i_param);
-  CORBA::Boolean getSimpleHapticsControllerParam(OpenHRP::SimpleHapticsControllerService::SimpleHapticsControllerParam_out i_param);
+  CORBA::Boolean setHapticsControllerParam(const OpenHRP::SimpleHapticsControllerService::SimpleHapticsControllerParam& i_param);
+  CORBA::Boolean getHapticsControllerParam(OpenHRP::SimpleHapticsControllerService::SimpleHapticsControllerParam_out i_param);
   //
   //
   void setComp(SimpleHapticsController *i_comp);
