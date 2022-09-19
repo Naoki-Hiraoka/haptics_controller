@@ -7,6 +7,7 @@
 #include <limits>
 #include <cpp_filters/TwoPointInterpolator.h>
 #include <joint_limit_table/JointLimitTable.h>
+#include <cnoid/Jacobian>
 
 enum leg_enum{RLEG=0, LLEG=1, NUM_LEGS=2};
 
@@ -27,6 +28,15 @@ public:
 
   std::vector<bool> jointControllable; // 要素数と順序はnumJoints()と同じ. falseの場合、qやtauはrefの値をそのまま出力する(writeOutputPort時にref値で上書き). IKでは動かさない(ref値をそのまま). トルク計算では目標トルクを通常通り計算する. このパラメータはMODE_IDLEのときにしか変更されない
 
+  std::vector<std::vector<cnoid::Vector3> > eeVertices; // 要素数と順序はeeNameと同じ. endeffector座標系. このverticesがVirtual Work Space内に留まるように力が発生する
+
+  double softJointAngleLimit = 15.0 / 180.0 * M_PI; // [rad]. 0以上. 上下限にこの値よりも近づくと、jointanglelimit力が発生
+  double jointAngleLimitGain = 100.0; // [N/rad]. 0以上
+
+  double floorHeight = 0.8; // [m]. generate frame
+  double floorPGain = 10000.0;
+  double floorDGain = 500.0;
+
 public:
   // from reference port
   cnoid::BodyPtr refRobotRaw; // actual. Model File frame (= generate frame)
@@ -34,28 +44,17 @@ public:
   std::vector<cnoid::Vector6> refEEWrenchRaw; // 要素数と順序はeeNameと同じ.Reference frame. EndEffector origin. ロボットが受ける力
   cnoid::BodyPtr actRobot; // actual. Model File frame (= generate frame)
   std::vector<cnoid::Position> actEEPose; // 要素数と順序はeeNameと同じ.generate frame
+  std::vector<cnoid::Vector6> actEEVel; // 要素数と順序はeeNameと同じ.generate frame. endeffector origin
+  std::vector<cnoid::JointPathPtr> actJointPath; // 要素数と順序はeeNameと同じ. actRobotに対応
 
 public:
   // AutoStabilizerの中で計算更新される.
 
-  // refToGenFrameConverter
-  std::vector<cnoid::Vector6> refEEWrench; // 要素数と順序はeeNameと同じ. endeffector frame. EndEffector origin. ロボットが受ける力
+  std::vector<cnoid::Vector6> refEEWrench; // 要素数と順序はeeNameと同じ.generate frame. EndEffector origin. ロボットが受ける力
+  cnoid::BodyPtr actRobotGch; // actRobotと同じだが、逆動力学計算に使う
+  cpp_filters::TwoPointInterpolator<double> currentFloorHeight = cpp_filters::TwoPointInterpolator<double>(0.0,0.0,0.0,cpp_filters::HOFFARBIB); // [m]. generate frame
 
-  // refForceHandler
-  std::vector<cnoid::Vector6> rfhTgtEEWrench; // 要素数と順序はeeNameと同じ. endeffector frame. EndEffector origin. ロボットが受ける力
-
-  // workSpaceForceHandler
-  std::vector<cnoid::Vector6> wsfhTgtEEWrench; // 要素数と順序はeeNameと同じ. endeffector frame. EndEffector origin. ロボットが受ける力
-
-  // gravityCompensationHandler
-  cnoid::VectorX gchTorque; // 要素数と順序はrobot->numJoints()と同じ. ロボットが発揮するトルク
-  cnoid::BodyPtr actRobotGch; // (actRobotと同じだが、逆動力学計算に使う)
-
-  // jointAngleLimitHandler
-  cnoid::VectorX jalhTorque; // 要素数と順序はrobot->numJoints()と同じ. ロボットが発揮するトルク
-
-  // torqueOutputGenerator
-  cnoid::BodyPtr actRobotTqc; // (actRobotと同じだが、uに指令関節トルクが入っている)
+  cnoid::BodyPtr actRobotTqc; // actRobotと同じだが、uに指令関節トルクが入っている
 
 public:
   void init(const cnoid::BodyPtr& robot){
@@ -70,8 +69,6 @@ public:
     actRobotGch->calcForwardKinematics(); actRobotGch->calcCenterOfMass();
     actRobotTqc = robot->clone();
     actRobotTqc->calcForwardKinematics(); actRobotTqc->calcCenterOfMass();
-    gchTorque = cnoid::VectorX::Zero(robot->numJoints());
-    jalhTorque = cnoid::VectorX::Zero(robot->numJoints());
   }
 
   void push_backEE(const std::string& name_, const std::string& parentLink_, const cnoid::Position& localT_){
@@ -82,16 +79,20 @@ public:
     refEEPoseRaw.push_back(cnoid::Position::Identity());
     refEEWrench.push_back(cnoid::Vector6::Zero());
     actEEPose.push_back(cnoid::Position::Identity());
-    rfhTgtEEWrench.push_back(cnoid::Vector6::Zero());
-    wsfhTgtEEWrench.push_back(cnoid::Vector6::Zero());
+    actEEVel.push_back(cnoid::Vector6::Zero());
+    actJointPath.push_back(cnoid::JointPathPtr(new cnoid::JointPath(actRobot->rootLink(), actRobot->link(parentLink_))));
+    eeVertices.push_back(std::vector<cnoid::Vector3>{cnoid::Vector3(0.1,0.05,0.0),cnoid::Vector3(-0.1,0.05,0.0),cnoid::Vector3(-0.1,-0.05,0.0),cnoid::Vector3(0.1,-0.05,0.0)});
   }
 
-  // startAutoStabilizer時に呼ばれる
+  // startHapcictController時に呼ばれる
   void reset(){
+    currentFloorHeight.reset(0.0);
+    currentFloorHeight.setGoal(this->floorHeight, 10.0);
   }
 
   // 毎周期呼ばれる. 内部の補間器をdtだけ進める
   void update(double dt){
+    currentFloorHeight.interpolate(dt);
   }
 
 public:

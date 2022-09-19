@@ -4,6 +4,7 @@
 #include <cnoid/RateGyroSensor>
 #include <cnoid/ValueTree>
 #include <cnoid/EigenUtil>
+#include <cnoid/src/Body/InverseDynamics.h>
 #include <limits>
 
 static const char* SimpleHapticsController_spec[] = {
@@ -91,7 +92,7 @@ RTC::ReturnCode_t SimpleHapticsController::onInitialize(){
       this->gaitParam_.maxTorque[i] = std::max(climit * gearRatio * torqueConst, 0.0);
     }
     std::string jointLimitTableStr; this->getProperty("joint_limit_table",jointLimitTableStr);
-    std::vector<std::shared_ptr<joint_limit_table::JointLimitTable> > jointLimitTables = joint_limit_table::readJointLimitTablesFromProperty (this->gaitParam_.actRobotTqc, jointLimitTableStr);
+    std::vector<std::shared_ptr<joint_limit_table::JointLimitTable> > jointLimitTables = joint_limit_table::readJointLimitTablesFromProperty (this->gaitParam_.actRobot, jointLimitTableStr);
     for(size_t i=0;i<jointLimitTables.size();i++){
       this->gaitParam_.jointLimitTables[jointLimitTables[i]->getSelfJoint()->jointId()].push_back(jointLimitTables[i]);
     }
@@ -171,10 +172,6 @@ RTC::ReturnCode_t SimpleHapticsController::onInitialize(){
     }
   }
 
-  this->refForceHandler_.init(this->gaitParam_, this->dt_);
-  this->workSpaceForceHandler_.init(this->gaitParam_);
-  this->torqueOutputGenerator_.init(this->gaitParam_);
-
   // initialize parameters
   this->loop_ = 0;
 
@@ -182,7 +179,7 @@ RTC::ReturnCode_t SimpleHapticsController::onInitialize(){
 }
 
 // static function
-bool SimpleHapticsController::readInPortData(const GaitParam& gaitParam, SimpleHapticsController::Ports& ports, cnoid::BodyPtr refRobotRaw, cnoid::BodyPtr actRobot, std::vector<cnoid::Vector6>& refEEWrenchRaw, std::vector<cnoid::Position>& refEEPoseRaw, std::vector<cnoid::Position>& actEEPose){
+bool SimpleHapticsController::readInPortData(const GaitParam& gaitParam, SimpleHapticsController::Ports& ports, cnoid::BodyPtr refRobotRaw, cnoid::BodyPtr actRobot, std::vector<cnoid::Vector6>& refEEWrenchRaw, std::vector<cnoid::Position>& refEEPoseRaw, std::vector<cnoid::Position>& actEEPose, std::vector<cnoid::Vector6>& actEEVel){
   bool qAct_updated = false;
 
   if(ports.m_refTauIn_.isNew()){
@@ -236,38 +233,124 @@ bool SimpleHapticsController::readInPortData(const GaitParam& gaitParam, SimpleH
       }
     }
   }
-  actRobot->calcForwardKinematics();
+  actRobot->calcForwardKinematics(true);
 
   for(int i=0;i<gaitParam.eeName.size(); i++){
     actEEPose[i] = actRobot->link(gaitParam.eeParentLink[i])->T() * gaitParam.eeLocalT[i];
+
+    cnoid::MatrixXd J = cnoid::MatrixXd::Zero(6,gaitParam.actJointPath[i]->numJoints()); // generate frame. endeffector origin
+    cnoid::setJacobian<0x3f,0,0,true>(*(gaitParam.actJointPath[i]),gaitParam.actRobot->link(gaitParam.eeParentLink[i]),gaitParam.eeLocalT[i].translation(), // input
+                                      J); // output
+    cnoid::VectorX dq(gaitParam.actJointPath[i]->numJoints());
+    for(int j=0;j<gaitParam.actJointPath[i]->numJoints();j++) dq[j] = gaitParam.actJointPath[i]->joint(j)->dq();
+    actEEVel[i] = J * dq;
   }
 
   return qAct_updated;
 }
 
 // static function
-bool SimpleHapticsController::execSimpleHapticsController(const SimpleHapticsController::ControlMode& mode, GaitParam& gaitParam, double dt, const RefToGenFrameConverter& refToGenFrameConverter, const RefForceHandler& refForceHandler, const WorkSpaceForceHandler& workSpaceForceHandler, const GravityCompensationHandler& gravityCompensationHandler, const JointAngleLimitHandler& jointAngleLimitHandler, const TorqueOutputGenerator& torqueOutputGenerator) {
+bool SimpleHapticsController::execSimpleHapticsController(const SimpleHapticsController::ControlMode& mode, GaitParam& gaitParam, double dt) {
   if(mode.isSyncToHCInit()){ // startAutoBalancer直後の初回. gaitParamのリセット
   }
 
-  // FootOrigin座標系を用いてrefRobotRawをgenerate frameに投影しrefRobotとする
-  refToGenFrameConverter.convertFrame(gaitParam, dt,
-                                      gaitParam.refEEWrench);
+  for(int i=0;i<gaitParam.eeName.size();i++){
+    const cnoid::Position refEEPoseRaw = gaitParam.refEEPoseRaw[i]; // reference frame
+    const cnoid::Vector6 refEEWrenchRaw = gaitParam.refEEWrenchRaw[i]; // reference frame. endeffector origin
 
-  refForceHandler.calcWrench(gaitParam, dt,
-                             gaitParam.rfhTgtEEWrench);
+    cnoid::Vector6 refEEWrench = cnoid::Vector6::Zero(); // endeffector frame. endeffector origin
+    refEEWrench.head<3>() /* endeffector frame. EndEffector origin */ = refEEPoseRaw.linear().transpose() * refEEWrenchRaw.head<3>();
+    refEEWrench.tail<3>() /* endeffector frame. EndEffector origin */ = refEEPoseRaw.linear().transpose() * refEEWrenchRaw.tail<3>();
 
-  workSpaceForceHandler.calcWrench(gaitParam, dt,
-                                   gaitParam.wsfhTgtEEWrench);
+    gaitParam.refEEWrench[i].head<3>() /* generate frame. EndEffector origin */ = gaitParam.actEEPose[i].linear() * refEEWrench.head<3>();
+    gaitParam.refEEWrench[i].tail<3>() /* generate frame. EndEffector origin */ = gaitParam.actEEPose[i].linear() * refEEWrench.tail<3>();
+  }
 
-  gravityCompensationHandler.calcTorque(gaitParam, dt,
-                                        gaitParam.actRobotGch, gaitParam.gchTorque);
+  // 指令関節トルクを0に初期化. 下の処理で足していく
+  for(int i=0;i<gaitParam.actRobotTqc->numJoints();i++){
+    gaitParam.actRobotTqc->joint(i)->u() = 0.0;
+  }
 
-  jointAngleLimitHandler.calcTorque(gaitParam, dt,
-                                    gaitParam.jalhTorque);
+  {
+    // 重力補償
+    gaitParam.actRobotGch->rootLink()->T() = gaitParam.actRobot->rootLink()->T();
+    gaitParam.actRobotGch->rootLink()->v() = cnoid::Vector3::Zero();
+    gaitParam.actRobotGch->rootLink()->w() = cnoid::Vector3::Zero();
+    gaitParam.actRobotGch->rootLink()->dv() = cnoid::Vector3(0.0,0.0,gaitParam.g);
+    gaitParam.actRobotGch->rootLink()->dw() = cnoid::Vector3::Zero();
+    for(int i=0;i<gaitParam.actRobotGch->numJoints();i++){
+      gaitParam.actRobotGch->joint(i)->q() = gaitParam.actRobot->joint(i)->q();
+      gaitParam.actRobotGch->joint(i)->dq() = 0.0;
+      gaitParam.actRobotGch->joint(i)->ddq() = 0.0;
+    }
+    gaitParam.actRobotGch->calcForwardKinematics(true, true);
+    cnoid::calcInverseDynamics(gaitParam.actRobotGch->rootLink());
+    for(int i=0;i<gaitParam.actRobotTqc->numJoints();i++){
+      gaitParam.actRobotTqc->joint(i)->u() += gaitParam.actRobotGch->joint(i)->u();
+    }
+  }
 
-  torqueOutputGenerator.calcTorque(gaitParam,
-                                   gaitParam.actRobotTqc);
+  {
+    // refWrench
+    for(int i=0;i<gaitParam.eeName.size();i++){
+      cnoid::MatrixXd J = cnoid::MatrixXd::Zero(6,gaitParam.actJointPath[i]->numJoints()); // generate frame. endeffector origin
+      cnoid::setJacobian<0x3f,0,0,true>(*(gaitParam.actJointPath[i]),gaitParam.actRobot->link(gaitParam.eeParentLink[i]),gaitParam.eeLocalT[i].translation(), // input
+                                        J); // output
+      const cnoid::VectorX tau = - J.transpose() * gaitParam.refEEWrench[i];
+      for(int j=0;j<gaitParam.actJointPath[i]->numJoints();j++){
+        gaitParam.actRobotTqc->joint(gaitParam.actJointPath[i]->joint(j)->jointId())->u() += tau[j];
+      }
+    }
+  }
+
+  {
+    // joint angle limit
+    for(int i=0;i<gaitParam.actRobot->numJoints();i++){
+      double u = gaitParam.actRobot->joint(i)->q_upper();
+      double l = gaitParam.actRobot->joint(i)->q_lower();
+      for(int j=0;j<gaitParam.jointLimitTables[i].size();j++){
+        u = std::min(u,gaitParam.jointLimitTables[i][j]->getUlimit());
+        l = std::max(l,gaitParam.jointLimitTables[i][j]->getLlimit());
+      }
+      const double margin = std::min(gaitParam.softJointAngleLimit, (u - l) / 2.0);
+      const double soft_ulimit = u - margin;
+      const double soft_llimit = l + margin;
+      double soft_jlimit_tq = 0;
+      if(gaitParam.actRobot->joint(i)->q() > soft_ulimit){ soft_jlimit_tq = gaitParam.jointAngleLimitGain * (soft_ulimit - gaitParam.actRobot->joint(i)->q()); }
+      if(gaitParam.actRobot->joint(i)->q() < soft_llimit){ soft_jlimit_tq = gaitParam.jointAngleLimitGain * (soft_llimit - gaitParam.actRobot->joint(i)->q()); }
+      gaitParam.actRobotTqc->joint(i)->u() += soft_jlimit_tq;
+    }
+  }
+
+  {
+    // virtual work space
+    for(int i=0;i<gaitParam.eeName.size();i++){
+      const cnoid::LinkPtr link = gaitParam.actRobot->link(gaitParam.eeParentLink[i]);
+      for(int j=0;j<gaitParam.eeVertices.size();j++){
+        const cnoid::Vector3 p = gaitParam.actEEPose[i] * gaitParam.eeVertices[i][j];
+        if(p[2] < gaitParam.currentFloorHeight.value()) {
+          cnoid::Vector6 w = cnoid::Vector6::Zero(); // generate frame. endeffector origin.
+          w[2] += - gaitParam.floorPGain * (p[2] - gaitParam.currentFloorHeight.value());
+          const cnoid::Vector3 eeVel = link->v() + link->w().cross(gaitParam.actEEPose[i]*gaitParam.eeLocalT[i]*gaitParam.eeVertices[i][j]-link->p()); // generate frame
+          w[2] += - gaitParam.floorDGain * eeVel[2];
+          cnoid::MatrixXd J = cnoid::MatrixXd::Zero(6,gaitParam.actJointPath[i]->numJoints()); // generate frame. endeffector origin
+          cnoid::setJacobian<0x3f,0,0,true>(*(gaitParam.actJointPath[i]),link,gaitParam.eeLocalT[i]*gaitParam.eeVertices[i][j], // input
+                                            J); // output
+          const cnoid::VectorX tau = - J.transpose() * w;
+          for(int j=0;j<gaitParam.actJointPath[i]->numJoints();j++){
+            gaitParam.actRobotTqc->joint(gaitParam.actJointPath[i]->joint(j)->jointId())->u() += tau[j];
+          }
+        }
+      }
+    }
+  }
+
+  {
+    // torque limit
+    for(int i=0;i<gaitParam.actRobotTqc->numJoints();i++){
+      gaitParam.actRobotTqc->joint(i)->u() = std::min(gaitParam.maxTorque[i],std::max(-gaitParam.maxTorque[i],gaitParam.actRobotTqc->joint(i)->u()));
+    }
+  }
 
   return true;
 }
@@ -366,7 +449,7 @@ RTC::ReturnCode_t SimpleHapticsController::onExecute(RTC::UniqueId ec_id){
   std::string instance_name = std::string(this->m_profile.instance_name);
   this->loop_++;
 
-  if(!SimpleHapticsController::readInPortData(this->gaitParam_, this->ports_, this->gaitParam_.refRobotRaw, this->gaitParam_.actRobot, this->gaitParam_.refEEWrenchRaw, this->gaitParam_.refEEPoseRaw, this->gaitParam_.actEEPose)) return RTC::RTC_OK;  // qAct が届かなければ何もしない
+  if(!SimpleHapticsController::readInPortData(this->gaitParam_, this->ports_, this->gaitParam_.refRobotRaw, this->gaitParam_.actRobot, this->gaitParam_.refEEWrenchRaw, this->gaitParam_.refEEPoseRaw, this->gaitParam_.actEEPose, gaitParam_.actEEVel)) return RTC::RTC_OK;  // qAct が届かなければ何もしない
 
   this->mode_.update(this->dt_);
   this->gaitParam_.update(this->dt_);
@@ -374,10 +457,8 @@ RTC::ReturnCode_t SimpleHapticsController::onExecute(RTC::UniqueId ec_id){
   if(this->mode_.isHCRunning()) {
     if(this->mode_.isSyncToHCInit()){ // startAutoBalancer直後の初回. 内部パラメータのリセット
       this->gaitParam_.reset();
-      this->refForceHandler_.reset();
-      this->workSpaceForceHandler_.reset(this->gaitParam_);
     }
-    SimpleHapticsController::execSimpleHapticsController(this->mode_, this->gaitParam_, this->dt_, this->refToGenFrameConverter_, this->refForceHandler_, this->workSpaceForceHandler_, this->gravityCompensationHandler_, this->jointAngleLimitHandler_, this->torqueOutputGenerator_);
+    SimpleHapticsController::execSimpleHapticsController(this->mode_, this->gaitParam_, this->dt_);
   }
 
   SimpleHapticsController::writeOutPortData(this->ports_, this->mode_, this->idleToHcTransitionInterpolator_, this->dt_, this->gaitParam_);

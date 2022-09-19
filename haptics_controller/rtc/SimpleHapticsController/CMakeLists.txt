@@ -27,12 +27,6 @@ link_directories(
 add_library(SimpleHapticsController SHARED
   SimpleHapticsController.cpp
   SimpleHapticsControllerService_impl.cpp
-  RefToGenFrameConverter.cpp
-  RefForceHandler.cpp
-  WorkSpaceForceHandler.cpp
-  GravityCompensationHandler.cpp
-  JointAngleLimitHandler.cpp
-  TorqueOutputGenerator.cpp
   )
 target_link_libraries(SimpleHapticsController
   ${catkin_LIBRARIES}

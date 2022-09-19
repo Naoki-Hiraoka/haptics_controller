@@ -23,12 +23,6 @@
 
 #include "SimpleHapticsControllerService_impl.h"
 #include "GaitParam.h"
-#include "RefToGenFrameConverter.h"
-#include "RefForceHandler.h"
-#include "WorkSpaceForceHandler.h"
-#include "GravityCompensationHandler.h"
-#include "JointAngleLimitHandler.h"
-#include "TorqueOutputGenerator.h"
 
 class SimpleHapticsController : public RTC::DataFlowComponentBase{
 public:
@@ -154,19 +148,12 @@ protected:
 
   GaitParam gaitParam_;
 
-  RefToGenFrameConverter refToGenFrameConverter_;
-  RefForceHandler refForceHandler_;
-  WorkSpaceForceHandler workSpaceForceHandler_;
-  GravityCompensationHandler gravityCompensationHandler_;
-  JointAngleLimitHandler jointAngleLimitHandler_;
-  TorqueOutputGenerator torqueOutputGenerator_;
-
 protected:
   // utility functions
   bool getProperty(const std::string& key, std::string& ret);
 
-  static bool readInPortData(const GaitParam& gaitParam, SimpleHapticsController::Ports& ports, cnoid::BodyPtr refRobotRaw, cnoid::BodyPtr actRobot, std::vector<cnoid::Vector6>& refEEWrenchRaw, std::vector<cnoid::Position>& refEEPoseRaw, std::vector<cnoid::Position>& actEEPose);
-  static bool execSimpleHapticsController(const SimpleHapticsController::ControlMode& mode, GaitParam& gaitParam, double dt, const RefToGenFrameConverter& refToGenFrameConverter, const RefForceHandler& refForceHandler, const WorkSpaceForceHandler& workSpaceForceHandler, const GravityCompensationHandler& gravityCompensationHandler, const JointAngleLimitHandler& jointAngleLimitHandler, const TorqueOutputGenerator& torqueOutputGenerator);
+  static bool readInPortData(const GaitParam& gaitParam, SimpleHapticsController::Ports& ports, cnoid::BodyPtr refRobotRaw, cnoid::BodyPtr actRobot, std::vector<cnoid::Vector6>& refEEWrenchRaw, std::vector<cnoid::Position>& refEEPoseRaw, std::vector<cnoid::Position>& actEEPose, std::vector<cnoid::Vector6>& actEEVel);
+  static bool execSimpleHapticsController(const SimpleHapticsController::ControlMode& mode, GaitParam& gaitParam, double dt);
   static bool writeOutPortData(SimpleHapticsController::Ports& ports, const SimpleHapticsController::ControlMode& mode, cpp_filters::TwoPointInterpolator<double>& idleToAbcTransitionInterpolator, double dt, const GaitParam& gaitParam);
 };
 
