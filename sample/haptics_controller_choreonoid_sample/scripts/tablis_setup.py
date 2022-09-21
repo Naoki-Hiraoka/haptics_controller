@@ -28,6 +28,8 @@ class TABLIS_HrpsysConfigurator(ChoreonoidHrpsysConfigurator):
         super(TABLIS_HrpsysConfigurator, self).connectComps()
         if self.hc:
             connectPorts(self.sh.port("qOut"), self.hc.port("qRef"))
+            connectPorts(self.sh.port("basePosOut"), self.hc.port("refBasePosIn"))
+            connectPorts(self.sh.port("baseRpyOut"), self.hc.port("refBaseRpyIn"))
             connectPorts(self.rh.port("q"), self.hc.port("qAct"))
             connectPorts(self.rh.port("dq"), self.hc.port("dqAct"))
             if self.st:
@@ -43,7 +45,7 @@ class TABLIS_HrpsysConfigurator(ChoreonoidHrpsysConfigurator):
         if self.hc:
             self.log_svc.add("TimedDoubleSeq","hc_genTauOut")
             rtm.connectPorts(rtm.findRTC("hc").port("genTauOut"),rtm.findRTC("log").port("hc_genTauOut"))
-            for ee in ["rleg", "lleg", "rarm", "larm"]:
+            for ee in ["rleg", "lleg", "rarm", "larm", "relbow", "lelbow"]:
                 self.log_svc.add("TimedPose3D","hc_act" + ee + "PoseOut")
                 rtm.connectPorts(rtm.findRTC("hc").port("act" + ee + "PoseOut"),rtm.findRTC("log").port("hc_act" + ee + "PoseOut"))
         super(TABLIS_HrpsysConfigurator, self).setupLogger()

@@ -53,6 +53,10 @@ protected:
     RTC::InPort<RTC::TimedDoubleSeq> m_qRefIn_;
     RTC::TimedDoubleSeq m_refTau_;
     RTC::InPort<RTC::TimedDoubleSeq> m_refTauIn_;
+    RTC::TimedPoint3D m_refBasePos_; // Reference World frame
+    RTC::InPort<RTC::TimedPoint3D> m_refBasePosIn_;
+    RTC::TimedOrientation3D m_refBaseRpy_; // Reference World frame
+    RTC::InPort<RTC::TimedOrientation3D> m_refBaseRpyIn_;
     std::vector<RTC::TimedDoubleSeq> m_refEEWrench_; // Reference World frame. EndEffector origin. 要素数及び順番はgaitParam_.eeNameと同じ. 搭乗者が受ける力(ロボットが発揮する力)
     std::vector<std::unique_ptr<RTC::InPort<RTC::TimedDoubleSeq> > > m_refEEWrenchIn_;
     std::vector<RTC::TimedPose3D> m_refEEPose_; // Reference World frame. 要素数及び順番はgaitParam_.eeNameと同じ

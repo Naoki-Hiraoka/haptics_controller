@@ -24,6 +24,8 @@ static const char* SimpleHapticsController_spec[] = {
 SimpleHapticsController::Ports::Ports() :
   m_qRefIn_("qRef", m_qRef_),
   m_refTauIn_("refTauIn", m_refTau_),
+  m_refBasePosIn_("refBasePosIn", m_refBasePos_),
+  m_refBaseRpyIn_("refBaseRpyIn", m_refBaseRpy_),
   m_qActIn_("qAct", m_qAct_),
   m_dqActIn_("dqAct", m_dqAct_),
 
@@ -49,6 +51,8 @@ RTC::ReturnCode_t SimpleHapticsController::onInitialize(){
   // add ports
   this->addInPort("qRef", this->ports_.m_qRefIn_);
   this->addInPort("refTauIn", this->ports_.m_refTauIn_);
+  this->addInPort("refBasePosIn", this->ports_.m_refBasePosIn_);
+  this->addInPort("refBaseRpyIn", this->ports_.m_refBaseRpyIn_);
   this->addInPort("qAct", this->ports_.m_qActIn_);
   this->addInPort("dqAct", this->ports_.m_dqActIn_);
   this->addOutPort("genTauOut", this->ports_.m_genTauOut_);
@@ -190,7 +194,6 @@ bool SimpleHapticsController::readInPortData(const GaitParam& gaitParam, SimpleH
       for(int i=0;i<ports.m_qRef_.data.length();i++){
         if(std::isfinite(ports.m_qRef_.data[i])) refRobot->joint(i)->q() = ports.m_qRef_.data[i];
       }
-      refRobot->calcForwardKinematics();
     }
   }
 
@@ -200,6 +203,25 @@ bool SimpleHapticsController::readInPortData(const GaitParam& gaitParam, SimpleH
       for(int i=0;i<ports.m_refTau_.data.length();i++){
         if(std::isfinite(ports.m_refTau_.data[i])) refRobot->joint(i)->u() = ports.m_refTau_.data[i];
       }
+    }
+  }
+
+  if(ports.m_refBasePosIn_.isNew()){
+    ports.m_refBasePosIn_.read();
+    if(std::isfinite(ports.m_refBasePos_.data.x) && std::isfinite(ports.m_refBasePos_.data.y) && std::isfinite(ports.m_refBasePos_.data.z)){
+      refRobot->rootLink()->p()[0] = ports.m_refBasePos_.data.x;
+      refRobot->rootLink()->p()[1] = ports.m_refBasePos_.data.y;
+      refRobot->rootLink()->p()[2] = ports.m_refBasePos_.data.z;
+
+      actRobot->rootLink()->p() = refRobot->rootLink()->p();
+    }
+  }
+  if(ports.m_refBaseRpyIn_.isNew()){
+    ports.m_refBaseRpyIn_.read();
+    if(std::isfinite(ports.m_refBaseRpy_.data.r) && std::isfinite(ports.m_refBaseRpy_.data.p) && std::isfinite(ports.m_refBaseRpy_.data.y)){
+      refRobot->rootLink()->R() = cnoid::rotFromRpy(ports.m_refBaseRpy_.data.r, ports.m_refBaseRpy_.data.p, ports.m_refBaseRpy_.data.y);
+
+      actRobot->rootLink()->R() = refRobot->rootLink()->R();
     }
   }
 
@@ -245,6 +267,8 @@ bool SimpleHapticsController::readInPortData(const GaitParam& gaitParam, SimpleH
       }
     }
   }
+
+  refRobot->calcForwardKinematics();
   actRobot->calcForwardKinematics(true);
 
   for(int i=0;i<gaitParam.eeName.size(); i++){
@@ -291,26 +315,6 @@ bool SimpleHapticsController::execSimpleHapticsController(const SimpleHapticsCon
   }
 
   {
-    // refWrench
-    for(int i=0;i<gaitParam.eeName.size();i++){
-      cnoid::Vector6 refEEWrench = cnoid::Vector6::Zero(); // endeffector frame. endeffector origin 搭乗者が受ける力(ロボットが発揮する力)
-      refEEWrench.head<3>() /* endeffector frame. EndEffector origin */ = gaitParam.refEEPose[i].linear().transpose() * gaitParam.refEEWrench[i].head<3>();
-      refEEWrench.tail<3>() /* endeffector frame. EndEffector origin */ = gaitParam.refEEPose[i].linear().transpose() * gaitParam.refEEWrench[i].tail<3>();
-      cnoid::Vector6 w = cnoid::Vector6::Zero(); // generate frame. endeffector origin 搭乗者が受ける力(ロボットが発揮する力)
-      w.head<3>() /* generate frame. EndEffector origin */ = gaitParam.actEEPose[i].linear() * refEEWrench.head<3>();
-      w.tail<3>() /* generate frame. EndEffector origin */ = gaitParam.actEEPose[i].linear() * refEEWrench.tail<3>();
-
-      cnoid::MatrixXd J = cnoid::MatrixXd::Zero(6,gaitParam.actJointPath[i]->numJoints()); // generate frame. endeffector origin
-      cnoid::setJacobian<0x3f,0,0,true>(*(gaitParam.actJointPath[i]),gaitParam.actRobot->link(gaitParam.eeParentLink[i]),gaitParam.eeLocalT[i].translation(), // input
-                                        J); // output
-      const cnoid::VectorX tau = J.transpose() * w;
-      for(int j=0;j<gaitParam.actJointPath[i]->numJoints();j++){
-        gaitParam.actRobotTqc->joint(gaitParam.actJointPath[i]->joint(j)->jointId())->u() += tau[j];
-      }
-    }
-  }
-
-  {
     // joint angle limit
     for(int i=0;i<gaitParam.actRobot->numJoints();i++){
       double u = gaitParam.actRobot->joint(i)->q_upper();
@@ -335,7 +339,6 @@ bool SimpleHapticsController::execSimpleHapticsController(const SimpleHapticsCon
       const cnoid::LinkPtr link = gaitParam.actRobot->link(gaitParam.eeParentLink[i]);
       for(int j=0;j<gaitParam.eeVertices[i].size();j++){
         const cnoid::Vector3 p = gaitParam.actEEPose[i] * gaitParam.eeVertices[i][j];
-        std::cerr << gaitParam.currentFloorHeight.value() << " : " << p.transpose() << std::endl;
         if(p[2] < gaitParam.currentFloorHeight.value()) {
           cnoid::Vector6 w = cnoid::Vector6::Zero(); // generate frame. endeffector origin. ロボットが発揮する力
           w[2] += - gaitParam.floorPGain * (p[2] - gaitParam.currentFloorHeight.value());
@@ -362,9 +365,37 @@ bool SimpleHapticsController::execSimpleHapticsController(const SimpleHapticsCon
   }
 
   {
-    // torque limit
+    // soft torque limit
     for(int i=0;i<gaitParam.actRobotTqc->numJoints();i++){
       double maxTorque = std::min(gaitParam.maxTorque[i],gaitParam.softMaxTorque[i]);
+      gaitParam.actRobotTqc->joint(i)->u() = std::min(maxTorque,std::max(-maxTorque,gaitParam.actRobotTqc->joint(i)->u()));
+    }
+  }
+
+  {
+    // refWrench
+    for(int i=0;i<gaitParam.eeName.size();i++){
+      cnoid::Vector6 refEEWrench = cnoid::Vector6::Zero(); // endeffector frame. endeffector origin 搭乗者が受ける力(ロボットが発揮する力)
+      refEEWrench.head<3>() /* endeffector frame. EndEffector origin */ = gaitParam.refEEPose[i].linear().transpose() * gaitParam.refEEWrench[i].head<3>();
+      refEEWrench.tail<3>() /* endeffector frame. EndEffector origin */ = gaitParam.refEEPose[i].linear().transpose() * gaitParam.refEEWrench[i].tail<3>();
+      cnoid::Vector6 w = cnoid::Vector6::Zero(); // generate frame. endeffector origin 搭乗者が受ける力(ロボットが発揮する力)
+      w.head<3>() /* generate frame. EndEffector origin */ = gaitParam.actEEPose[i].linear() * refEEWrench.head<3>();
+      w.tail<3>() /* generate frame. EndEffector origin */ = gaitParam.actEEPose[i].linear() * refEEWrench.tail<3>();
+
+      cnoid::MatrixXd J = cnoid::MatrixXd::Zero(6,gaitParam.actJointPath[i]->numJoints()); // generate frame. endeffector origin
+      cnoid::setJacobian<0x3f,0,0,true>(*(gaitParam.actJointPath[i]),gaitParam.actRobot->link(gaitParam.eeParentLink[i]),gaitParam.eeLocalT[i].translation(), // input
+                                        J); // output
+      const cnoid::VectorX tau = J.transpose() * w;
+      for(int j=0;j<gaitParam.actJointPath[i]->numJoints();j++){
+        gaitParam.actRobotTqc->joint(gaitParam.actJointPath[i]->joint(j)->jointId())->u() += tau[j];
+      }
+    }
+  }
+
+  {
+    // torque limit
+    for(int i=0;i<gaitParam.actRobotTqc->numJoints();i++){
+      double maxTorque = gaitParam.maxTorque[i];
       gaitParam.actRobotTqc->joint(i)->u() = std::min(maxTorque,std::max(-maxTorque,gaitParam.actRobotTqc->joint(i)->u()));
     }
   }

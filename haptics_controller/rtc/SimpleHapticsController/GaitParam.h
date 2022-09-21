@@ -25,7 +25,7 @@ public:
 
 public:
   // parameter
-  cnoid::VectorX softMaxTorque; // 要素数と順序はnumJoints()と同じ. 単位は[Nm]. 0以上. softMaxTorqueとmaxTorqueの小さい方の値が使われる
+  cnoid::VectorX softMaxTorque; // 要素数と順序はnumJoints()と同じ. 単位は[Nm]. 0以上. refWrench以外のtorqueの上限
   std::vector<bool> jointControllable; // 要素数と順序はnumJoints()と同じ. falseの場合、qやtauはrefの値をそのまま出力する(writeOutputPort時にref値で上書き). IKでは動かさない(ref値をそのまま). トルク計算では目標トルクを通常通り計算する. このパラメータはMODE_IDLEのときにしか変更されない
 
   std::vector<std::vector<cnoid::Vector3> > eeVertices; // 要素数と順序はeeNameと同じ. endeffector座標系. このverticesがVirtual Work Space内に留まるように力が発生する
@@ -33,8 +33,8 @@ public:
   double softJointAngleLimitMargin = 15.0 / 180.0 * M_PI; // [rad]. 0以上. 上下限にこの値よりも近づくと、jointanglelimit力が発生
   double jointAngleLimitGain = 100.0; // [N/rad]. 0以上
 
-  double initialFloorHeight = -1.3; // [m]. generate frame
-  double floorHeight = -0.9; // [m]. generate frame.
+  double initialFloorHeight = 0.0; // [m]. generate frame
+  double floorHeight = 0.4; // [m]. generate frame.
   double floorPGain = 10000.0;
   double floorDGain = 500.0;
 
