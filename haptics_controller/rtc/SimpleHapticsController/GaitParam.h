@@ -25,23 +25,27 @@ public:
 
 public:
   // parameter
-
+  cnoid::VectorX softMaxTorque; // 要素数と順序はnumJoints()と同じ. 単位は[Nm]. 0以上. softMaxTorqueとmaxTorqueの小さい方の値が使われる
   std::vector<bool> jointControllable; // 要素数と順序はnumJoints()と同じ. falseの場合、qやtauはrefの値をそのまま出力する(writeOutputPort時にref値で上書き). IKでは動かさない(ref値をそのまま). トルク計算では目標トルクを通常通り計算する. このパラメータはMODE_IDLEのときにしか変更されない
 
   std::vector<std::vector<cnoid::Vector3> > eeVertices; // 要素数と順序はeeNameと同じ. endeffector座標系. このverticesがVirtual Work Space内に留まるように力が発生する
 
-  double softJointAngleLimit = 15.0 / 180.0 * M_PI; // [rad]. 0以上. 上下限にこの値よりも近づくと、jointanglelimit力が発生
+  double softJointAngleLimitMargin = 15.0 / 180.0 * M_PI; // [rad]. 0以上. 上下限にこの値よりも近づくと、jointanglelimit力が発生
   double jointAngleLimitGain = 100.0; // [N/rad]. 0以上
 
-  double floorHeight = 0.8; // [m]. generate frame
+  double initialFloorHeight = -1.3; // [m]. generate frame
+  double floorHeight = -0.9; // [m]. generate frame.
   double floorPGain = 10000.0;
   double floorDGain = 500.0;
 
+  double qRefPGain = 0.0;
+  double qRefDGain = 0.0;
+
 public:
   // from reference port
-  cnoid::BodyPtr refRobotRaw; // actual. Model File frame (= generate frame)
-  std::vector<cnoid::Position> refEEPoseRaw; // 要素数と順序はeeNameと同じ.Reference frame.
-  std::vector<cnoid::Vector6> refEEWrenchRaw; // 要素数と順序はeeNameと同じ.Reference frame. EndEffector origin. ロボットが受ける力
+  cnoid::BodyPtr refRobot; // actual. Model File frame (= generate frame)
+  std::vector<cnoid::Position> refEEPose; // 要素数と順序はeeNameと同じ.Reference frame.
+  std::vector<cnoid::Vector6> refEEWrench; // 要素数と順序はeeNameと同じ.Reference frame. EndEffector origin. 搭乗者が受ける力(ロボットが発揮する力)
   cnoid::BodyPtr actRobot; // actual. Model File frame (= generate frame)
   std::vector<cnoid::Position> actEEPose; // 要素数と順序はeeNameと同じ.generate frame
   std::vector<cnoid::Vector6> actEEVel; // 要素数と順序はeeNameと同じ.generate frame. endeffector origin
@@ -50,9 +54,8 @@ public:
 public:
   // AutoStabilizerの中で計算更新される.
 
-  std::vector<cnoid::Vector6> refEEWrench; // 要素数と順序はeeNameと同じ.generate frame. EndEffector origin. ロボットが受ける力
   cnoid::BodyPtr actRobotGch; // actRobotと同じだが、逆動力学計算に使う
-  cpp_filters::TwoPointInterpolator<double> currentFloorHeight = cpp_filters::TwoPointInterpolator<double>(0.0,0.0,0.0,cpp_filters::HOFFARBIB); // [m]. generate frame
+  cpp_filters::TwoPointInterpolator<double> currentFloorHeight = cpp_filters::TwoPointInterpolator<double>(0.0,0.0,0.0,cpp_filters::HOFFARBIB); // [m]. generate frame.  滑らかに遷移する
 
   cnoid::BodyPtr actRobotTqc; // actRobotと同じだが、uに指令関節トルクが入っている
 
@@ -60,9 +63,10 @@ public:
   void init(const cnoid::BodyPtr& robot){
     maxTorque = cnoid::VectorX::Ones(robot->numJoints()) * std::numeric_limits<double>::max();
     jointLimitTables.resize(robot->numJoints());
+    softMaxTorque = cnoid::VectorX::Ones(robot->numJoints()) * std::numeric_limits<double>::max();
     jointControllable.resize(robot->numJoints(), true);
-    refRobotRaw = robot->clone();
-    refRobotRaw->calcForwardKinematics(); refRobotRaw->calcCenterOfMass();
+    refRobot = robot->clone();
+    refRobot->calcForwardKinematics(); refRobot->calcCenterOfMass();
     actRobot = robot->clone();
     actRobot->calcForwardKinematics(); actRobot->calcCenterOfMass();
     actRobotGch = robot->clone();
@@ -75,8 +79,8 @@ public:
     eeName.push_back(name_);
     eeParentLink.push_back(parentLink_);
     eeLocalT.push_back(localT_);
-    refEEWrenchRaw.push_back(cnoid::Vector6::Zero());
-    refEEPoseRaw.push_back(cnoid::Position::Identity());
+    refEEWrench.push_back(cnoid::Vector6::Zero());
+    refEEPose.push_back(cnoid::Position::Identity());
     refEEWrench.push_back(cnoid::Vector6::Zero());
     actEEPose.push_back(cnoid::Position::Identity());
     actEEVel.push_back(cnoid::Vector6::Zero());
@@ -86,7 +90,7 @@ public:
 
   // startHapcictController時に呼ばれる
   void reset(){
-    currentFloorHeight.reset(0.0);
+    currentFloorHeight.reset(this->initialFloorHeight);
     currentFloorHeight.setGoal(this->floorHeight, 10.0);
   }
 

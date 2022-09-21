@@ -22,26 +22,41 @@ module OpenHRP
       // SimpleHapticsController
       /// 各endeffectorの名前. 変更不可. (.confファイルのend_effectorsの並び順を、hrpsys外のレイヤで取得する手段が他に無いので)
       sequence<string> ee_name;
-      /// 要素数と順序はnumJoints()と同じ. falseの場合、qやtauはrefの値をそのまま出力する(writeOutputPort時にref値で上書き). IKでは動かさない(ref値をそのまま). トルク計算では目標トルクを通常通り計算する. このパラメータはMODE_IDLEのときにしか変更されない
-      sequence<string> controllable_joints;
       /// Transition time [s] for start HapticsController. 下限0.01[s]
       double hc_start_transition_time;
       /// Transition time [s] for stop HapticsController. 下限0.01[s]
       double hc_stop_transition_time;
+      /// 各関節の上限トルク[Nm]
+      sequence<double> max_torque;
+      /// 要素数と順序はnumJoints()と同じ. falseの場合、qやtauはrefの値をそのまま出力する(writeOutputPort時にref値で上書き). IKでは動かさない(ref値をそのまま). トルク計算では目標トルクを通常通り計算する. このパラメータはMODE_IDLEのときにしか変更されない
+      sequence<string> controllable_joints;
+      /// 要素数と順序はeeNameと同じ. endeffector座標系. このverticesがVirtual Work Space内に留まるように力が発生する
+      sequence<sequence<sequence<double, 3> > > ee_vertices;
+      /// [rad]. 0以上. 上下限にこの値よりも近づくと、jointanglelimit力が発生
+      double soft_joint_angle_limit_margin;
+      /// [m]
+      double initial_virtual_floor_height;
       /// [m]
       double virtual_floor_height;
-
+      ///
+      double floor_pgain;
+      ///
+      double floor_dgain;
+      ///
+      double qref_pgain;
+      ///
+      double qref_dgain;
     };
 
     /**
-     * @brief Start AutoBalancer mode in which the robot controls the COM.
+     * @brief Start HapticsController mode in which the robot controls the COM.
      * @param
      * @return true if set successfully, false otherwise
      */
     boolean startHapticsController();
 
     /**
-     * @brief Stop AutoBalancer mode.
+     * @brief Stop HapticsController mode.
      * @param
      * @return true if set successfully, false otherwise
      */

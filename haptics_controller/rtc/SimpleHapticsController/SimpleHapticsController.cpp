@@ -22,6 +22,7 @@ static const char* SimpleHapticsController_spec[] = {
 };
 
 SimpleHapticsController::Ports::Ports() :
+  m_qRefIn_("qRef", m_qRef_),
   m_refTauIn_("refTauIn", m_refTau_),
   m_qActIn_("qAct", m_qAct_),
   m_dqActIn_("dqAct", m_dqAct_),
@@ -46,6 +47,7 @@ SimpleHapticsController::SimpleHapticsController(RTC::Manager* manager) : RTC::D
 RTC::ReturnCode_t SimpleHapticsController::onInitialize(){
 
   // add ports
+  this->addInPort("qRef", this->ports_.m_qRefIn_);
   this->addInPort("refTauIn", this->ports_.m_refTauIn_);
   this->addInPort("qAct", this->ports_.m_qActIn_);
   this->addInPort("dqAct", this->ports_.m_dqActIn_);
@@ -126,7 +128,7 @@ RTC::ReturnCode_t SimpleHapticsController::onInitialize(){
       // check validity
       name.erase(std::remove(name.begin(), name.end(), ' '), name.end()); // remove whitespace
       parentLink.erase(std::remove(name.begin(), name.end(), ' '), name.end()); // remove whitespace
-      if(!this->gaitParam_.refRobotRaw->link(parentLink)){
+      if(!this->gaitParam_.refRobot->link(parentLink)){
         std::cerr << "\x1b[31m[" << this->m_profile.instance_name << "] " << " link [" << parentLink << "]" << " is not found for " << name << "\x1b[39m" << std::endl;
         return RTC::RTC_ERROR;
       }
@@ -179,14 +181,24 @@ RTC::ReturnCode_t SimpleHapticsController::onInitialize(){
 }
 
 // static function
-bool SimpleHapticsController::readInPortData(const GaitParam& gaitParam, SimpleHapticsController::Ports& ports, cnoid::BodyPtr refRobotRaw, cnoid::BodyPtr actRobot, std::vector<cnoid::Vector6>& refEEWrenchRaw, std::vector<cnoid::Position>& refEEPoseRaw, std::vector<cnoid::Position>& actEEPose, std::vector<cnoid::Vector6>& actEEVel){
+bool SimpleHapticsController::readInPortData(const GaitParam& gaitParam, SimpleHapticsController::Ports& ports, cnoid::BodyPtr refRobot, cnoid::BodyPtr actRobot, std::vector<cnoid::Vector6>& refEEWrench, std::vector<cnoid::Position>& refEEPose, std::vector<cnoid::Position>& actEEPose, std::vector<cnoid::Vector6>& actEEVel){
   bool qAct_updated = false;
+
+  if(ports.m_qRefIn_.isNew()){
+    ports.m_qRefIn_.read();
+    if(ports.m_qRef_.data.length() == refRobot->numJoints()){
+      for(int i=0;i<ports.m_qRef_.data.length();i++){
+        if(std::isfinite(ports.m_qRef_.data[i])) refRobot->joint(i)->q() = ports.m_qRef_.data[i];
+      }
+      refRobot->calcForwardKinematics();
+    }
+  }
 
   if(ports.m_refTauIn_.isNew()){
     ports.m_refTauIn_.read();
-    if(ports.m_refTau_.data.length() == refRobotRaw->numJoints()){
+    if(ports.m_refTau_.data.length() == refRobot->numJoints()){
       for(int i=0;i<ports.m_refTau_.data.length();i++){
-        if(std::isfinite(ports.m_refTau_.data[i])) refRobotRaw->joint(i)->u() = ports.m_refTau_.data[i];
+        if(std::isfinite(ports.m_refTau_.data[i])) refRobot->joint(i)->u() = ports.m_refTau_.data[i];
       }
     }
   }
@@ -196,7 +208,7 @@ bool SimpleHapticsController::readInPortData(const GaitParam& gaitParam, SimpleH
       ports.m_refEEWrenchIn_[i]->read();
       if(ports.m_refEEWrench_[i].data.length() == 6){
         for(int j=0;j<6;j++){
-          if(std::isfinite(ports.m_refEEWrench_[i].data[j])) refEEWrenchRaw[i][j] = ports.m_refEEWrench_[i].data[j];
+          if(std::isfinite(ports.m_refEEWrench_[i].data[j])) refEEWrench[i][j] = ports.m_refEEWrench_[i].data[j];
         }
       }
     }
@@ -208,10 +220,10 @@ bool SimpleHapticsController::readInPortData(const GaitParam& gaitParam, SimpleH
       if(std::isfinite(ports.m_refEEPose_[i].data.position.x) && std::isfinite(ports.m_refEEPose_[i].data.position.y) && std::isfinite(ports.m_refEEPose_[i].data.position.z) &&
          std::isfinite(ports.m_refEEPose_[i].data.orientation.r) && std::isfinite(ports.m_refEEPose_[i].data.orientation.p) && std::isfinite(ports.m_refEEPose_[i].data.orientation.y)){
         cnoid::Position pose;
-        refEEPoseRaw[i].translation()[0] = ports.m_refEEPose_[i].data.position.x;
-        refEEPoseRaw[i].translation()[1] = ports.m_refEEPose_[i].data.position.y;
-        refEEPoseRaw[i].translation()[2] = ports.m_refEEPose_[i].data.position.z;
-        refEEPoseRaw[i].linear() = cnoid::rotFromRpy(ports.m_refEEPose_[i].data.orientation.r, ports.m_refEEPose_[i].data.orientation.p, ports.m_refEEPose_[i].data.orientation.y);
+        refEEPose[i].translation()[0] = ports.m_refEEPose_[i].data.position.x;
+        refEEPose[i].translation()[1] = ports.m_refEEPose_[i].data.position.y;
+        refEEPose[i].translation()[2] = ports.m_refEEPose_[i].data.position.z;
+        refEEPose[i].linear() = cnoid::rotFromRpy(ports.m_refEEPose_[i].data.orientation.r, ports.m_refEEPose_[i].data.orientation.p, ports.m_refEEPose_[i].data.orientation.y);
       }
     }
   }
@@ -254,18 +266,6 @@ bool SimpleHapticsController::execSimpleHapticsController(const SimpleHapticsCon
   if(mode.isSyncToHCInit()){ // startAutoBalancer直後の初回. gaitParamのリセット
   }
 
-  for(int i=0;i<gaitParam.eeName.size();i++){
-    const cnoid::Position refEEPoseRaw = gaitParam.refEEPoseRaw[i]; // reference frame
-    const cnoid::Vector6 refEEWrenchRaw = gaitParam.refEEWrenchRaw[i]; // reference frame. endeffector origin
-
-    cnoid::Vector6 refEEWrench = cnoid::Vector6::Zero(); // endeffector frame. endeffector origin
-    refEEWrench.head<3>() /* endeffector frame. EndEffector origin */ = refEEPoseRaw.linear().transpose() * refEEWrenchRaw.head<3>();
-    refEEWrench.tail<3>() /* endeffector frame. EndEffector origin */ = refEEPoseRaw.linear().transpose() * refEEWrenchRaw.tail<3>();
-
-    gaitParam.refEEWrench[i].head<3>() /* generate frame. EndEffector origin */ = gaitParam.actEEPose[i].linear() * refEEWrench.head<3>();
-    gaitParam.refEEWrench[i].tail<3>() /* generate frame. EndEffector origin */ = gaitParam.actEEPose[i].linear() * refEEWrench.tail<3>();
-  }
-
   // 指令関節トルクを0に初期化. 下の処理で足していく
   for(int i=0;i<gaitParam.actRobotTqc->numJoints();i++){
     gaitParam.actRobotTqc->joint(i)->u() = 0.0;
@@ -293,10 +293,17 @@ bool SimpleHapticsController::execSimpleHapticsController(const SimpleHapticsCon
   {
     // refWrench
     for(int i=0;i<gaitParam.eeName.size();i++){
+      cnoid::Vector6 refEEWrench = cnoid::Vector6::Zero(); // endeffector frame. endeffector origin 搭乗者が受ける力(ロボットが発揮する力)
+      refEEWrench.head<3>() /* endeffector frame. EndEffector origin */ = gaitParam.refEEPose[i].linear().transpose() * gaitParam.refEEWrench[i].head<3>();
+      refEEWrench.tail<3>() /* endeffector frame. EndEffector origin */ = gaitParam.refEEPose[i].linear().transpose() * gaitParam.refEEWrench[i].tail<3>();
+      cnoid::Vector6 w = cnoid::Vector6::Zero(); // generate frame. endeffector origin 搭乗者が受ける力(ロボットが発揮する力)
+      w.head<3>() /* generate frame. EndEffector origin */ = gaitParam.actEEPose[i].linear() * refEEWrench.head<3>();
+      w.tail<3>() /* generate frame. EndEffector origin */ = gaitParam.actEEPose[i].linear() * refEEWrench.tail<3>();
+
       cnoid::MatrixXd J = cnoid::MatrixXd::Zero(6,gaitParam.actJointPath[i]->numJoints()); // generate frame. endeffector origin
       cnoid::setJacobian<0x3f,0,0,true>(*(gaitParam.actJointPath[i]),gaitParam.actRobot->link(gaitParam.eeParentLink[i]),gaitParam.eeLocalT[i].translation(), // input
                                         J); // output
-      const cnoid::VectorX tau = - J.transpose() * gaitParam.refEEWrench[i];
+      const cnoid::VectorX tau = J.transpose() * w;
       for(int j=0;j<gaitParam.actJointPath[i]->numJoints();j++){
         gaitParam.actRobotTqc->joint(gaitParam.actJointPath[i]->joint(j)->jointId())->u() += tau[j];
       }
@@ -312,7 +319,7 @@ bool SimpleHapticsController::execSimpleHapticsController(const SimpleHapticsCon
         u = std::min(u,gaitParam.jointLimitTables[i][j]->getUlimit());
         l = std::max(l,gaitParam.jointLimitTables[i][j]->getLlimit());
       }
-      const double margin = std::min(gaitParam.softJointAngleLimit, (u - l) / 2.0);
+      const double margin = std::min(gaitParam.softJointAngleLimitMargin, (u - l) / 2.0);
       const double soft_ulimit = u - margin;
       const double soft_llimit = l + margin;
       double soft_jlimit_tq = 0;
@@ -326,17 +333,18 @@ bool SimpleHapticsController::execSimpleHapticsController(const SimpleHapticsCon
     // virtual work space
     for(int i=0;i<gaitParam.eeName.size();i++){
       const cnoid::LinkPtr link = gaitParam.actRobot->link(gaitParam.eeParentLink[i]);
-      for(int j=0;j<gaitParam.eeVertices.size();j++){
+      for(int j=0;j<gaitParam.eeVertices[i].size();j++){
         const cnoid::Vector3 p = gaitParam.actEEPose[i] * gaitParam.eeVertices[i][j];
+        std::cerr << gaitParam.currentFloorHeight.value() << " : " << p.transpose() << std::endl;
         if(p[2] < gaitParam.currentFloorHeight.value()) {
-          cnoid::Vector6 w = cnoid::Vector6::Zero(); // generate frame. endeffector origin.
+          cnoid::Vector6 w = cnoid::Vector6::Zero(); // generate frame. endeffector origin. ロボットが発揮する力
           w[2] += - gaitParam.floorPGain * (p[2] - gaitParam.currentFloorHeight.value());
           const cnoid::Vector3 eeVel = link->v() + link->w().cross(gaitParam.actEEPose[i]*gaitParam.eeLocalT[i]*gaitParam.eeVertices[i][j]-link->p()); // generate frame
           w[2] += - gaitParam.floorDGain * eeVel[2];
           cnoid::MatrixXd J = cnoid::MatrixXd::Zero(6,gaitParam.actJointPath[i]->numJoints()); // generate frame. endeffector origin
           cnoid::setJacobian<0x3f,0,0,true>(*(gaitParam.actJointPath[i]),link,gaitParam.eeLocalT[i]*gaitParam.eeVertices[i][j], // input
                                             J); // output
-          const cnoid::VectorX tau = - J.transpose() * w;
+          const cnoid::VectorX tau = J.transpose() * w; // wはロボットが発揮する力
           for(int j=0;j<gaitParam.actJointPath[i]->numJoints();j++){
             gaitParam.actRobotTqc->joint(gaitParam.actJointPath[i]->joint(j)->jointId())->u() += tau[j];
           }
@@ -346,9 +354,18 @@ bool SimpleHapticsController::execSimpleHapticsController(const SimpleHapticsCon
   }
 
   {
+    // joint pd
+    for(int i=0;i<gaitParam.actRobotTqc->numJoints();i++){
+      gaitParam.actRobotTqc->joint(i)->u() -= gaitParam.qRefPGain * (gaitParam.actRobot->joint(i)->q() - gaitParam.refRobot->joint(i)->q());
+      gaitParam.actRobotTqc->joint(i)->u() -= gaitParam.qRefDGain * gaitParam.actRobot->joint(i)->dq();
+    }
+  }
+
+  {
     // torque limit
     for(int i=0;i<gaitParam.actRobotTqc->numJoints();i++){
-      gaitParam.actRobotTqc->joint(i)->u() = std::min(gaitParam.maxTorque[i],std::max(-gaitParam.maxTorque[i],gaitParam.actRobotTqc->joint(i)->u()));
+      double maxTorque = std::min(gaitParam.maxTorque[i],gaitParam.softMaxTorque[i]);
+      gaitParam.actRobotTqc->joint(i)->u() = std::min(maxTorque,std::max(-maxTorque,gaitParam.actRobotTqc->joint(i)->u()));
     }
   }
 
@@ -377,10 +394,10 @@ bool SimpleHapticsController::writeOutPortData(SimpleHapticsController::Ports& p
     ports.m_genTau_.data.length(gaitParam.actRobotTqc->numJoints());
     for(int i=0;i<gaitParam.actRobotTqc->numJoints();i++){
       if(mode.now() == SimpleHapticsController::ControlMode::MODE_IDLE || !gaitParam.jointControllable[i]){
-        ports.m_genTau_.data[i] = gaitParam.refRobotRaw->joint(i)->u();
+        ports.m_genTau_.data[i] = gaitParam.refRobot->joint(i)->u();
       }else if(mode.isSyncToHC() || mode.isSyncToIdle()){
         double ratio = idleToHcTransitionInterpolator.value();
-        ports.m_genTau_.data[i] = gaitParam.refRobotRaw->joint(i)->u() * (1.0 - ratio) + gaitParam.actRobotTqc->joint(i)->u() * ratio;
+        ports.m_genTau_.data[i] = gaitParam.refRobot->joint(i)->u() * (1.0 - ratio) + gaitParam.actRobotTqc->joint(i)->u() * ratio;
       }else{
         ports.m_genTau_.data[i] = gaitParam.actRobotTqc->joint(i)->u();
       }
@@ -449,7 +466,7 @@ RTC::ReturnCode_t SimpleHapticsController::onExecute(RTC::UniqueId ec_id){
   std::string instance_name = std::string(this->m_profile.instance_name);
   this->loop_++;
 
-  if(!SimpleHapticsController::readInPortData(this->gaitParam_, this->ports_, this->gaitParam_.refRobotRaw, this->gaitParam_.actRobot, this->gaitParam_.refEEWrenchRaw, this->gaitParam_.refEEPoseRaw, this->gaitParam_.actEEPose, gaitParam_.actEEVel)) return RTC::RTC_OK;  // qAct が届かなければ何もしない
+  if(!SimpleHapticsController::readInPortData(this->gaitParam_, this->ports_, this->gaitParam_.refRobot, this->gaitParam_.actRobot, this->gaitParam_.refEEWrench, this->gaitParam_.refEEPose, this->gaitParam_.actEEPose, gaitParam_.actEEVel)) return RTC::RTC_OK;  // qAct が届かなければ何もしない
 
   this->mode_.update(this->dt_);
   this->gaitParam_.update(this->dt_);
@@ -506,6 +523,11 @@ bool SimpleHapticsController::setHapticsControllerParam(const OpenHRP::SimpleHap
   std::lock_guard<std::mutex> guard(this->mutex_);
 
   // ignore i_param.ee_name
+  this->mode_.hc_start_transition_time = std::max(i_param.hc_start_transition_time, 0.01);
+  this->mode_.hc_stop_transition_time = std::max(i_param.hc_stop_transition_time, 0.01);
+  if(i_param.max_torque.length() == this->gaitParam_.softMaxTorque.size()){
+    for(int i=0;i<this->gaitParam_.softMaxTorque.size();i++) this->gaitParam_.softMaxTorque[i] = std::max(0.0, i_param.max_torque[i]);
+  }
   if(this->mode_.now() == ControlMode::MODE_IDLE){
     for(int i=0;i<this->gaitParam_.jointControllable.size();i++) this->gaitParam_.jointControllable[i] = false;
     for(int i=0;i<i_param.controllable_joints.length();i++){
@@ -513,8 +535,26 @@ bool SimpleHapticsController::setHapticsControllerParam(const OpenHRP::SimpleHap
       if(joint) this->gaitParam_.jointControllable[joint->jointId()] = true;
     }
   }
-  this->mode_.hc_start_transition_time = std::max(i_param.hc_start_transition_time, 0.01);
-  this->mode_.hc_stop_transition_time = std::max(i_param.hc_stop_transition_time, 0.01);
+  if(i_param.ee_vertices.length()==this->gaitParam_.eeName.size()){
+    for(int i=0;i<this->gaitParam_.eeName.size();i++){
+      this->gaitParam_.eeVertices[i].clear();
+      for(int j=0;j<i_param.ee_vertices[i].length();j++){
+        if(i_param.ee_vertices[i][j].length() == 3){
+          this->gaitParam_.eeVertices[i].push_back(cnoid::Vector3(i_param.ee_vertices[i][j][0],i_param.ee_vertices[i][j][1],i_param.ee_vertices[i][j][2]));
+        }
+      }
+    }
+  }
+  this->gaitParam_.softJointAngleLimitMargin = std::max(0.0, i_param.soft_joint_angle_limit_margin);
+  this->gaitParam_.initialFloorHeight = i_param.initial_virtual_floor_height;
+  this->gaitParam_.floorHeight = i_param.virtual_floor_height;
+  if(this->mode_.isHCRunning() && this->gaitParam_.currentFloorHeight.getGoal() != this->gaitParam_.floorHeight){
+    this->gaitParam_.currentFloorHeight.setGoal(this->gaitParam_.floorHeight, 10.0);
+  }
+  this->gaitParam_.floorPGain = std::max(0.0, i_param.floor_pgain);
+  this->gaitParam_.floorDGain = std::max(0.0, i_param.floor_dgain);
+  this->gaitParam_.qRefPGain = std::max(0.0, i_param.qref_pgain);
+  this->gaitParam_.qRefDGain = std::max(0.0, i_param.qref_dgain);
 
   return true;
 }
@@ -523,12 +563,29 @@ bool SimpleHapticsController::getHapticsControllerParam(OpenHRP::SimpleHapticsCo
 
   i_param.ee_name.length(this->gaitParam_.eeName.size());
   for(int i=0;i<this->gaitParam_.eeName.size();i++) i_param.ee_name[i] = this->gaitParam_.eeName[i].c_str();
+  i_param.hc_start_transition_time = this->mode_.hc_start_transition_time;
+  i_param.hc_stop_transition_time = this->mode_.hc_stop_transition_time;
+  i_param.max_torque.length(this->gaitParam_.softMaxTorque.size());
+  for(int i=0;i<this->gaitParam_.softMaxTorque.size();i++) i_param.max_torque[i] = this->gaitParam_.softMaxTorque[i];
   std::vector<std::string> controllable_joints;
   for(int i=0;i<this->gaitParam_.jointControllable.size();i++) if(this->gaitParam_.jointControllable[i]) controllable_joints.push_back(this->gaitParam_.actRobot->joint(i)->name());
   i_param.controllable_joints.length(controllable_joints.size());
   for(int i=0;i<controllable_joints.size();i++) i_param.controllable_joints[i] = controllable_joints[i].c_str();
-  i_param.hc_start_transition_time = this->mode_.hc_start_transition_time;
-  i_param.hc_stop_transition_time = this->mode_.hc_stop_transition_time;
+  i_param.ee_vertices.length(this->gaitParam_.eeName.size());
+  for(int i=0;i<this->gaitParam_.eeName.size();i++){
+    i_param.ee_vertices[i].length(this->gaitParam_.eeVertices[i].size());
+    for(int j=0;j<this->gaitParam_.eeVertices[i].size();j++){
+      i_param.ee_vertices[i][j].length(3);
+      for(int k=0;k<3;k++) i_param.ee_vertices[i][j][k] = this->gaitParam_.eeVertices[i][j][k];
+    }
+  }
+  i_param.soft_joint_angle_limit_margin = this->gaitParam_.softJointAngleLimitMargin;
+  i_param.initial_virtual_floor_height = this->gaitParam_.initialFloorHeight;
+  i_param.virtual_floor_height = this->gaitParam_.floorHeight;
+  i_param.floor_pgain = this->gaitParam_.floorPGain;
+  i_param.floor_dgain = this->gaitParam_.floorDGain;
+  i_param.qref_pgain = this->gaitParam_.qRefPGain;
+  i_param.qref_dgain = this->gaitParam_.qRefDGain;
 
   return true;
 }

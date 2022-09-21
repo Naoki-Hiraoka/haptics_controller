@@ -27,6 +27,7 @@ class TABLIS_HrpsysConfigurator(ChoreonoidHrpsysConfigurator):
     def connectComps(self):
         super(TABLIS_HrpsysConfigurator, self).connectComps()
         if self.hc:
+            connectPorts(self.sh.port("qOut"), self.hc.port("qRef"))
             connectPorts(self.rh.port("q"), self.hc.port("qAct"))
             connectPorts(self.rh.port("dq"), self.hc.port("dqAct"))
             if self.st:
@@ -48,9 +49,14 @@ class TABLIS_HrpsysConfigurator(ChoreonoidHrpsysConfigurator):
         super(TABLIS_HrpsysConfigurator, self).setupLogger()
 
     def startABSTIMP (self):
+        self.rh_svc.setServoErrorLimit("all",0.0)
         self.rh_svc.setJointControlMode("all",OpenHRP.RobotHardwareService.TORQUE)
         self.rh_svc.setServoTorqueGainPercentage("all",100)
         self.rh_svc.setServoGainPercentage("all",0)
+        hcp = self.hc_svc.getHapticsControllerParam()[1]
+        hcp.soft_max_torque = [20,40,60,60,20,20, 20,40,60,60,20,20, 40, 15,15,10,10,6,4,4,6, 15,15,10,10,6,4,4,6]
+        hcp.qref_dgain = 10.0 # simulator only
+        self.hc_svc.setHapticsControllerParam(hcp)
         self.hc_svc.startHapticsController()
 
 if __name__ == '__main__':
