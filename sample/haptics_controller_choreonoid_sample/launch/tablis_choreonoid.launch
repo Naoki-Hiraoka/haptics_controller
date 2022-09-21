@@ -1,0 +1,42 @@
+<launch>
+  <!-- robot dependant settings -->
+  <arg name="CONF_FILE" value="$(find hrpsys_ros_bridge_tutorials)/models/TABLIS.conf"/>
+  <arg name="URDF_FILE" value="$(find hrpsys_ros_bridge_tutorials)/models/TABLIS.urdf"/>
+  <arg name="MODEL_FILE" value="$(find jsk_models)/TABLIS/TABLISmain.wrl" />
+  <arg name="PROJECT_FILE" default="$(find haptics_controller_choreonoid_sample)/config/TABLIS_BASE_RH_FLAT.cnoid"/>
+
+  <!-- hrpsys -->
+  <arg name="hrpsys_load_path" value="$(find hrpsys)/lib"/>
+  <arg name="haptics_controller_load_path" value="$(find haptics_controller)/../../lib"/>
+  <include file="$(find hrpsys_choreonoid)/launch/startup_choreonoid.launch" >
+    <!-- robot dependant settings -->
+    <arg name="SIMULATOR_NAME" value="TABLIS(Robot)0" />
+    <arg name="PROJECT_FILE"   value="$(arg PROJECT_FILE)" />
+    <arg name="MODEL_FILE"     value="$(arg MODEL_FILE)" />
+    <arg name="CONF_FILE"      value="$(arg CONF_FILE)"/>
+    <arg name="HRPSYS_PY_PKG"  value="haptics_controller_choreonoid_sample"/>
+    <arg name="HRPSYS_PY_NAME" value="tablis_setup.py"/>
+    <arg name="hrpsys_load_path" default="$(arg haptics_controller_load_path),$(arg hrpsys_load_path)"/>
+    <arg name="hrpsys_opt_rtc_config_args" value='-o "example.SimpleHapticsController.config_file:$(arg CONF_FILE)"' />
+  </include>
+  <!-- ros_bridge -->
+  <rosparam command="load" file="$(find hrpsys_ros_bridge_tutorials)/models/TABLIS_controller_config.yaml" />
+  <include file="$(find hrpsys_choreonoid)/launch/ros_bridge_choreonoid.launch" >
+    <!-- robot dependant settings -->
+    <arg name="SIMULATOR_NAME" value="RobotHardware_choreonoid0" />
+    <arg name="MODEL_FILE"     value="$(arg MODEL_FILE)" />
+    <arg name="COLLADA_FILE"   value="$(arg URDF_FILE)"/>
+    <arg name="CONF_FILE"      value="$(arg CONF_FILE)" />
+    <arg name="USE_WALKING"    default="false"  />
+    <arg name="USE_EMERGENCYSTOPPER"    default="false"  />
+    <arg name="USE_IMPEDANCECONTROLLER" default="false"  />
+    <arg name="USE_REFERENCEFORCEUPDATER" default="false" />
+    <arg name="USE_OBJECTCONTACTTURNAROUNDDETECTOR" default="false" />
+  </include>
+
+  <node pkg="haptics_controller" name="SimpleHapticsControllerServiceROSBridge" type="SimpleHapticsControllerServiceROSBridgeComp"
+        output="screen" args ='-o "corba.master_manager:localhost:2810" -o "corba.nameservers:localhost:15005" -o "naming.formats:%n.rtc" -o "exec_cxt.periodic.type:PeriodicExecutionContext" -o "exec_cxt.periodic.rate:2000" -o "logger.file_name:/tmp/rtc%p.log"' />
+  <rtconnect from="SimpleHapticsControllerServiceROSBridge.rtc:SimpleHapticsControllerService" to="hc.rtc:SimpleHapticsControllerService"  subscription_type="new"/>
+  <rtactivate component="SimpleHapticsControllerServiceROSBridge.rtc" />
+  <node name="rtmlaunch_tablis_choreonoid" pkg="openrtm_tools" type="rtmlaunch.py" args="$(find haptics_controller_choreonoid_sample)/launch/tablis_choreonoid.launch" output="screen"/>
+</launch>
