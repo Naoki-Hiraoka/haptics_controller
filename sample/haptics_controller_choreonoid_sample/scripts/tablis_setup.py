@@ -56,7 +56,7 @@ class TABLIS_HrpsysConfigurator(ChoreonoidHrpsysConfigurator):
         self.rh_svc.setServoTorqueGainPercentage("all",100)
         self.rh_svc.setServoGainPercentage("all",0)
         hcp = self.hc_svc.getHapticsControllerParam()[1]
-        hcp.soft_max_torque = [20,40,60,60,20,20, 20,40,60,60,20,20, 40, 15,15,10,10,6,4,4,6, 15,15,10,10,6,4,4,6]
+        hcp.max_torque = [20,40,60,60,20,20, 20,40,60,60,20,20, 40, 15,15,10,10,6,4,4,6, 15,15,10,10,6,4,4,6]
         hcp.qref_dgain = 10.0 # simulator only
         self.hc_svc.setHapticsControllerParam(hcp)
         self.hc_svc.startHapticsController()
