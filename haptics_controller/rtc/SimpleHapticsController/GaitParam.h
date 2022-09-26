@@ -33,8 +33,8 @@ public:
   double softJointAngleLimitMargin = 15.0 / 180.0 * M_PI; // [rad]. 0以上. 上下限にこの値よりも近づくと、jointanglelimit力が発生
   double jointAngleLimitGain = 100.0; // [N/rad]. 0以上
 
-  double initialFloorHeight = 0.0; // [m]. generate frame
-  double floorHeight = 0.4; // [m]. generate frame.
+  double initialFloorHeight = -0.2; // [m]. generate frame
+  double floorHeight = 0.2; // [m]. generate frame.
   double floorPGain = 10000.0;
   double floorDGain = 500.0;
 

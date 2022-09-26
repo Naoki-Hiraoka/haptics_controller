@@ -6,7 +6,6 @@ set(CMAKE_BUILD_TYPE Release)
 add_definitions(-Wno-deprecated)
 
 find_package(catkin REQUIRED COMPONENTS
-  ik_constraint
   cpp_filters
   joint_limit_table
   )

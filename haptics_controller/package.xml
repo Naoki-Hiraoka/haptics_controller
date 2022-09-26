@@ -15,6 +15,5 @@
   <depend>rtmbuild2</depend>
   <depend>cpp_filters</depend>
   <depend>choreonoid</depend>
-  <depend>ik_constraint</depend>
   <depend>joint_limit_table</depend>
 </package>
