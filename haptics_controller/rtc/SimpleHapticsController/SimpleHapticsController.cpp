@@ -365,14 +365,6 @@ bool SimpleHapticsController::execSimpleHapticsController(const SimpleHapticsCon
   }
 
   {
-    // soft torque limit
-    for(int i=0;i<gaitParam.actRobotTqc->numJoints();i++){
-      double maxTorque = std::min(gaitParam.maxTorque[i],gaitParam.softMaxTorque[i]);
-      gaitParam.actRobotTqc->joint(i)->u() = std::min(maxTorque,std::max(-maxTorque,gaitParam.actRobotTqc->joint(i)->u()));
-    }
-  }
-
-  {
     // refWrench
     for(int i=0;i<gaitParam.eeName.size();i++){
       cnoid::Vector6 refEEWrench = cnoid::Vector6::Zero(); // endeffector frame. endeffector origin 搭乗者が受ける力(ロボットが発揮する力)
@@ -389,6 +381,14 @@ bool SimpleHapticsController::execSimpleHapticsController(const SimpleHapticsCon
       for(int j=0;j<gaitParam.actJointPath[i]->numJoints();j++){
         gaitParam.actRobotTqc->joint(gaitParam.actJointPath[i]->joint(j)->jointId())->u() += tau[j];
       }
+    }
+  }
+
+  {
+    // soft torque limit
+    for(int i=0;i<gaitParam.actRobotTqc->numJoints();i++){
+      double maxTorque = std::min(gaitParam.maxTorque[i],gaitParam.softMaxTorque[i]);
+      gaitParam.actRobotTqc->joint(i)->u() = std::min(maxTorque,std::max(-maxTorque,gaitParam.actRobotTqc->joint(i)->u()));
     }
   }
 
