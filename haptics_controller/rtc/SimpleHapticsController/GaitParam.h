@@ -25,7 +25,7 @@ public:
 
 public:
   // parameter
-  cnoid::VectorX softMaxTorque; // 要素数と順序はnumJoints()と同じ. 単位は[Nm]. 0以上. refWrench以外のtorqueの上限
+  std::vector<cpp_filters::TwoPointInterpolator<double> > softMaxTorque; // 要素数と順序はnumJoints()と同じ. 単位は[Nm]. 0以上. refWrench以外のtorqueの上限
   std::vector<bool> jointControllable; // 要素数と順序はnumJoints()と同じ. falseの場合、qやtauはrefの値をそのまま出力する(writeOutputPort時にref値で上書き). IKでは動かさない(ref値をそのまま). トルク計算では目標トルクを通常通り計算する. このパラメータはMODE_IDLEのときにしか変更されない
 
   std::vector<std::vector<cnoid::Vector3> > eeVertices; // 要素数と順序はeeNameと同じ. endeffector座標系. このverticesがVirtual Work Space内に留まるように力が発生する
@@ -63,7 +63,7 @@ public:
   void init(const cnoid::BodyPtr& robot){
     maxTorque = cnoid::VectorX::Ones(robot->numJoints()) * std::numeric_limits<double>::max();
     jointLimitTables.resize(robot->numJoints());
-    softMaxTorque = cnoid::VectorX::Ones(robot->numJoints()) * std::numeric_limits<double>::max();
+    softMaxTorque.resize(robot->numJoints(), cpp_filters::TwoPointInterpolator<double>(std::numeric_limits<double>::max(),0.0,0.0,cpp_filters::HOFFARBIB));
     jointControllable.resize(robot->numJoints(), true);
     refRobot = robot->clone();
     refRobot->calcForwardKinematics(); refRobot->calcCenterOfMass();
@@ -92,11 +92,12 @@ public:
   void reset(){
     currentFloorHeight.reset(this->initialFloorHeight);
     currentFloorHeight.setGoal(this->floorHeight, 10.0);
+    for(int i=0;i<softMaxTorque.size();i++) softMaxTorque[i].reset(softMaxTorque[i].getGoal());
   }
-
   // 毎周期呼ばれる. 内部の補間器をdtだけ進める
   void update(double dt){
     currentFloorHeight.interpolate(dt);
+    for(int i=0;i<softMaxTorque.size();i++) softMaxTorque[i].interpolate(dt);
   }
 
 public:

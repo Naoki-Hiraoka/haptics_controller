@@ -395,7 +395,7 @@ bool SimpleHapticsController::execSimpleHapticsController(const SimpleHapticsCon
   {
     // torque limit
     for(int i=0;i<gaitParam.actRobotTqc->numJoints();i++){
-      double maxTorque = gaitParam.maxTorque[i];
+      double maxTorque = std::min(gaitParam.maxTorque[i],gaitParam.softMaxTorque[i].value());
       gaitParam.actRobotTqc->joint(i)->u() = std::min(maxTorque,std::max(-maxTorque,gaitParam.actRobotTqc->joint(i)->u()));
     }
   }
@@ -557,7 +557,10 @@ bool SimpleHapticsController::setHapticsControllerParam(const OpenHRP::SimpleHap
   this->mode_.hc_start_transition_time = std::max(i_param.hc_start_transition_time, 0.01);
   this->mode_.hc_stop_transition_time = std::max(i_param.hc_stop_transition_time, 0.01);
   if(i_param.max_torque.length() == this->gaitParam_.softMaxTorque.size()){
-    for(int i=0;i<this->gaitParam_.softMaxTorque.size();i++) this->gaitParam_.softMaxTorque[i] = std::max(0.0, i_param.max_torque[i]);
+    for(int i=0;i<this->gaitParam_.softMaxTorque.size();i++) {
+      double value = std::max(0.0, i_param.max_torque[i]);
+      if(value != this->gaitParam_.softMaxTorque[i].getGoal()) this->gaitParam_.softMaxTorque[i].setGoal(value, 5.0); // 5 sec
+    }
   }
   if(this->mode_.now() == ControlMode::MODE_IDLE){
     for(int i=0;i<this->gaitParam_.jointControllable.size();i++) this->gaitParam_.jointControllable[i] = false;
@@ -597,7 +600,7 @@ bool SimpleHapticsController::getHapticsControllerParam(OpenHRP::SimpleHapticsCo
   i_param.hc_start_transition_time = this->mode_.hc_start_transition_time;
   i_param.hc_stop_transition_time = this->mode_.hc_stop_transition_time;
   i_param.max_torque.length(this->gaitParam_.softMaxTorque.size());
-  for(int i=0;i<this->gaitParam_.softMaxTorque.size();i++) i_param.max_torque[i] = this->gaitParam_.softMaxTorque[i];
+  for(int i=0;i<this->gaitParam_.softMaxTorque.size();i++) i_param.max_torque[i] = this->gaitParam_.softMaxTorque[i].getGoal();
   std::vector<std::string> controllable_joints;
   for(int i=0;i<this->gaitParam_.jointControllable.size();i++) if(this->gaitParam_.jointControllable[i]) controllable_joints.push_back(this->gaitParam_.actRobot->joint(i)->name());
   i_param.controllable_joints.length(controllable_joints.size());
