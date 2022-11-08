@@ -342,14 +342,14 @@ bool SimpleHapticsController::execSimpleHapticsController(const SimpleHapticsCon
         if(p[2] < gaitParam.currentFloorHeight.value()) {
           cnoid::Vector6 w = cnoid::Vector6::Zero(); // generate frame. endeffector origin. ロボットが発揮する力
           w[2] += - gaitParam.floorPGain * (p[2] - gaitParam.currentFloorHeight.value());
-          const cnoid::Vector3 eeVel = link->v() + link->w().cross(gaitParam.actEEPose[i]*gaitParam.eeLocalT[i]*gaitParam.eeVertices[i][j]-link->p()); // generate frame
+          const cnoid::Vector3 eeVel = link->v() + link->w().cross(gaitParam.actEEPose[i]*gaitParam.eeVertices[i][j]-link->p()); // generate frame
           w[2] += - gaitParam.floorDGain * eeVel[2];
           cnoid::MatrixXd J = cnoid::MatrixXd::Zero(6,gaitParam.actJointPath[i]->numJoints()); // generate frame. endeffector origin
           cnoid::setJacobian<0x3f,0,0,true>(*(gaitParam.actJointPath[i]),link,gaitParam.eeLocalT[i]*gaitParam.eeVertices[i][j], // input
                                             J); // output
           const cnoid::VectorX tau = J.transpose() * w; // wはロボットが発揮する力
-          for(int j=0;j<gaitParam.actJointPath[i]->numJoints();j++){
-            gaitParam.actRobotTqc->joint(gaitParam.actJointPath[i]->joint(j)->jointId())->u() += tau[j];
+          for(int k=0;k<gaitParam.actJointPath[i]->numJoints();k++){
+            gaitParam.actRobotTqc->joint(gaitParam.actJointPath[i]->joint(k)->jointId())->u() += tau[k];
           }
         }
       }
@@ -381,14 +381,6 @@ bool SimpleHapticsController::execSimpleHapticsController(const SimpleHapticsCon
       for(int j=0;j<gaitParam.actJointPath[i]->numJoints();j++){
         gaitParam.actRobotTqc->joint(gaitParam.actJointPath[i]->joint(j)->jointId())->u() += tau[j];
       }
-    }
-  }
-
-  {
-    // soft torque limit
-    for(int i=0;i<gaitParam.actRobotTqc->numJoints();i++){
-      double maxTorque = std::min(gaitParam.maxTorque[i],gaitParam.softMaxTorque[i]);
-      gaitParam.actRobotTqc->joint(i)->u() = std::min(maxTorque,std::max(-maxTorque,gaitParam.actRobotTqc->joint(i)->u()));
     }
   }
 
