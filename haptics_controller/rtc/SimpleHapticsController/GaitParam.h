@@ -93,6 +93,7 @@ public:
     currentFloorHeight.reset(this->initialFloorHeight);
     currentFloorHeight.setGoal(this->floorHeight, 10.0);
     for(int i=0;i<softMaxTorque.size();i++) softMaxTorque[i].reset(softMaxTorque[i].getGoal());
+    for(int i=0;i<refEEWrench.size();i++) refEEWrench[i].setZero(); // 古いデータが残っていて、現在通信途絶している場合があるので、一度ゼロに初期化した方が安全.
   }
   // 毎周期呼ばれる. 内部の補間器をdtだけ進める
   void update(double dt){
